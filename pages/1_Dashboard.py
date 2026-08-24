@@ -63,15 +63,20 @@ st.markdown("---")
 
 if not closed_filtered.empty:
     col_left, col_right = st.columns(2)
+
     with col_left:
         st.subheader("Downtime by State")
-        if 'state' in closed_filtered.columns:
+        if 'state' in closed_filtered.columns and 'down_time_min' in closed_filtered.columns:
             state_df = closed_filtered.groupby('state')['down_time_min'].sum().reset_index()
             state_df = state_df.sort_values('down_time_min', ascending=False).head(10)
             state_df['hours'] = (state_df['down_time_min'] / 60).round(1)
-            fig = px.bar(state_df, x='state', y='hours', color='hours', color_continuous_scale='Blues', text='hours')
+            fig = px.bar(state_df, x='state', y='hours', color='hours',
+                         color_continuous_scale='Blues', text='hours')
             fig.update_layout(template='plotly_dark', height=350)
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("State or Down Time column missing in data.")
+
     with col_right:
         st.subheader("Tickets by Owner / ISP")
         if 'owner' in closed_filtered.columns:
@@ -80,15 +85,33 @@ if not closed_filtered.empty:
             fig = px.pie(owner_df, names='owner', values='count', hole=0.4)
             fig.update_layout(template='plotly_dark', height=350)
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Owner column not found.")
+
     st.subheader("Top Down Reasons")
     if 'reason_clean' in closed_filtered.columns:
         reason_df = closed_filtered['reason_clean'].value_counts().head(8).reset_index()
         reason_df.columns = ['Reason', 'Count']
-        fig = px.bar(reason_df, x='Count', y='Reason', orientation='h', color='Count', color_continuous_scale='Teal')
+        fig = px.bar(reason_df, x='Count', y='Reason', orientation='h', color='Count',
+                     color_continuous_scale='Teal')
         fig.update_layout(template='plotly_dark', height=400, yaxis={'categoryorder': 'total ascending'})
         st.plotly_chart(fig, use_container_width=True)
+    elif 'reason' in closed_filtered.columns:
+        reason_df = closed_filtered['reason'].astype(str).str[:60].value_counts().head(8).reset_index()
+        reason_df.columns = ['Reason', 'Count']
+        fig = px.bar(reason_df, x='Count', y='Reason', orientation='h', color='Count',
+                     color_continuous_scale='Teal')
+        fig.update_layout(template='plotly_dark', height=400, yaxis={'categoryorder': 'total ascending'})
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Reason column not found.")
+
+    # Show available columns for debugging
+    with st.expander("Available columns in Closed data (for debugging)"):
+        st.write(list(closed_filtered.columns))
+
 else:
-    st.info("No closed tickets data loaded. Please go to **Upload Data** page.")
+    st.info("No closed tickets data loaded. Please go to **Upload Data** page and upload Closed Tickets Excel.")
 
 st.markdown("---")
 st.subheader("🚨 Open Tickets Snapshot")
@@ -97,6 +120,10 @@ if open_df is not None and not open_df.empty:
     open_with_esc = apply_escalation_to_open(open_df, matrix)
     display_cols = ['ticket_id', 'site_code', 'status', 'state', 'open_hours', 'escalation_level', 'escalation_person', 'reason']
     display_cols = [c for c in display_cols if c in open_with_esc.columns]
-    st.dataframe(open_with_esc[display_cols].sort_values('open_hours', ascending=False).head(15), use_container_width=True, height=400)
+    st.dataframe(
+        open_with_esc[display_cols].sort_values('open_hours', ascending=False).head(15) if 'open_hours' in open_with_esc.columns else open_with_esc[display_cols].head(15),
+        use_container_width=True,
+        height=400
+    )
 else:
     st.info("No open tickets loaded.")
