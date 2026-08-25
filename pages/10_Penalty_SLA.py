@@ -11,13 +11,8 @@ from utils.data_processing import filter_by_period
 
 st.set_page_config(page_title="Penalty & SLA | XTRNATE", page_icon="📜", layout="wide")
 
-st.title("📜 Automated Penalty Calculation")
-st.markdown("Data load hote hi SLA breach detect + penalty auto-calculate. Thresholds change kar sakte ho.")
-
-isp = st.session_state.get('selected_isp')
-if not isp:
-    st.warning("Home se ISP select karo.")
-    st.stop()
+st.title("📜 Automated Penalty — HCIN vs ONEOTT (Alag-alag)")
+st.markdown("Dono vendors ka penalty **separate** calculate hota hai")
 
 closed_df = st.session_state.get('closed_df')
 open_df = st.session_state.get('open_df')
@@ -26,31 +21,23 @@ if closed_df is None or closed_df.empty:
     st.warning("Closed data load karo (Google Sheet / Excel).")
     st.stop()
 
-if isp != "ALL" and 'isp' in closed_df.columns:
-    closed_df = closed_df[closed_df['isp'] == isp].copy()
-if open_df is not None and not open_df.empty and isp != "ALL" and 'isp' in open_df.columns:
-    open_df = open_df[open_df['isp'] == isp].copy()
-
 period = st.radio("Period", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "Overall"], horizontal=True)
 period_map = {"Last 1 Month": "1M", "Last 3 Months": "3M", "Last 6 Months": "6M", "Overall": "ALL"}
-df = filter_by_period(closed_df, period_map[period]) if period_map[period] != "ALL" else closed_df.copy()
+df_all = filter_by_period(closed_df, period_map[period]) if period_map[period] != "ALL" else closed_df.copy()
 
-if 'resolution_days' not in df.columns:
-    st.error("resolution_days nahi hai. Submitted Time + Resolved Time-Active chahiye.")
+if 'resolution_days' not in df_all.columns:
+    st.error("resolution_days nahi hai. Submitted + Resolved Time-Active chahiye.")
     st.stop()
 
-# ========== DEFAULT AUTO RULES (session persistent) ==========
+# ========== RULES ==========
 if 'penalty_rules' not in st.session_state:
     st.session_state.penalty_rules = {
-        'l1_hours': 24,
-        'l1_penalty': 500,
-        'l2_hours': 72,
-        'l2_penalty': 2000,
-        'l3_hours': 120,
-        'l3_penalty': 5000,
+        'l1_hours': 24, 'l1_penalty': 500,
+        'l2_hours': 72, 'l2_penalty': 2000,
+        'l3_hours': 120, 'l3_penalty': 5000,
     }
 
-with st.expander("⚙️ Penalty Rules (optional change — warna auto default chalega)"):
+with st.expander("⚙️ Penalty Rules (dono vendors pe same apply)")
     r = st.session_state.penalty_rules
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -63,162 +50,209 @@ with st.expander("⚙️ Penalty Rules (optional change — warna auto default c
         r['l3_hours'] = st.number_input("L3 SLA (hrs)", value=int(r['l3_hours']), min_value=1)
         r['l3_penalty'] = st.number_input("L3 Penalty ₹", value=int(r['l3_penalty']), min_value=0, step=500)
     st.session_state.penalty_rules = r
-    st.caption("Rules save ho jati hain is session ke liye. Refresh pe default wapas.")
 
 rules = st.session_state.penalty_rules
 
-# ========== AUTO CALCULATE ==========
-df = df.copy()
-df['resolution_hours'] = pd.to_numeric(df['resolution_days'], errors='coerce') * 24
+def apply_penalty(df):
+    if df is None or df.empty:
+        return pd.DataFrame()
+    d = df.copy()
+    d['resolution_hours'] = pd.to_numeric(d['resolution_days'], errors='coerce') * 24
 
-def calc_sla(hours):
-    if pd.isna(hours):
-        return 'Unknown', 0
-    if hours > rules['l3_hours']:
-        return 'L3 Critical', rules['l3_penalty']
-    if hours > rules['l2_hours']:
-        return 'L2 Breach', rules['l2_penalty']
-    if hours > rules['l1_hours']:
-        return 'L1 Breach', rules['l1_penalty']
-    return 'Within SLA', 0
+    def calc(hours):
+        if pd.isna(hours):
+            return 'Unknown', 0
+        if hours > rules['l3_hours']:
+            return 'L3 Critical', rules['l3_penalty']
+        if hours > rules['l2_hours']:
+            return 'L2 Breach', rules['l2_penalty']
+        if hours > rules['l1_hours']:
+            return 'L1 Breach', rules['l1_penalty']
+        return 'Within SLA', 0
 
-results = df['resolution_hours'].apply(lambda h: calc_sla(h))
-df['sla_status'] = results.apply(lambda x: x[0])
-df['penalty_est'] = results.apply(lambda x: x[1])
+    res = d['resolution_hours'].apply(calc)
+    d['sla_status'] = res.apply(lambda x: x[0])
+    d['penalty_est'] = res.apply(lambda x: x[1])
+    return d
 
-# ========== AUTO SUMMARY ==========
-st.subheader("⚡ Auto-Calculated Summary")
-st.caption(f"Rules: L1 >{rules['l1_hours']}h = ₹{rules['l1_penalty']} | L2 >{rules['l2_hours']}h = ₹{rules['l2_penalty']} | L3 >{rules['l3_hours']}h = ₹{rules['l3_penalty']}")
+def get_isp_slice(df, name):
+    if df is None or df.empty:
+        return pd.DataFrame()
+    if 'isp' not in df.columns:
+        return pd.DataFrame()
+    return df[df['isp'] == name].copy()
 
-within = (df['sla_status'] == 'Within SLA').sum()
-l1 = (df['sla_status'] == 'L1 Breach').sum()
-l2 = (df['sla_status'] == 'L2 Breach').sum()
-l3 = (df['sla_status'] == 'L3 Critical').sum()
-total_pen = int(df['penalty_est'].sum())
-breach_count = l1 + l2 + l3
+hcin_raw = get_isp_slice(df_all, 'HCIN')
+ott_raw = get_isp_slice(df_all, 'ONEOTT')
 
-m1, m2, m3, m4, m5, m6 = st.columns(6)
-m1.metric("Total Tickets", len(df))
-m2.metric("Within SLA", int(within))
-m3.metric("L1 Breach", int(l1))
-m4.metric("L2 Breach", int(l2))
-m5.metric("L3 Critical", int(l3))
-m6.metric("Auto Penalty ₹", f"{total_pen:,}")
+hcin = apply_penalty(hcin_raw)
+ott = apply_penalty(ott_raw)
 
-st.success(f"**{breach_count}** tickets SLA breach | **Estimated Penalty: ₹{total_pen:,}**")
+def summary_block(d, title):
+    if d.empty:
+        return {
+            'title': title, 'total': 0, 'within': 0, 'l1': 0, 'l2': 0, 'l3': 0,
+            'penalty': 0, 'breaches': 0
+        }
+    return {
+        'title': title,
+        'total': len(d),
+        'within': int((d['sla_status'] == 'Within SLA').sum()),
+        'l1': int((d['sla_status'] == 'L1 Breach').sum()),
+        'l2': int((d['sla_status'] == 'L2 Breach').sum()),
+        'l3': int((d['sla_status'] == 'L3 Critical').sum()),
+        'penalty': int(d['penalty_est'].sum()),
+        'breaches': int((d['penalty_est'] > 0).sum()),
+    }
 
-# Charts
-col1, col2 = st.columns(2)
-with col1:
-    status_df = df['sla_status'].value_counts().reindex(
-        ['Within SLA', 'L1 Breach', 'L2 Breach', 'L3 Critical', 'Unknown'], fill_value=0
-    ).reset_index()
-    status_df.columns = ['Status', 'Count']
-    fig = px.pie(status_df, names='Status', values='Count', hole=0.4,
-                 color='Status',
-                 color_discrete_map={
-                     'Within SLA': '#22c55e', 'L1 Breach': '#eab308',
-                     'L2 Breach': '#f97316', 'L3 Critical': '#ef4444', 'Unknown': '#64748b'
-                 })
-    fig.update_layout(template='plotly_dark', height=360, title="SLA Status Distribution")
-    st.plotly_chart(fig, use_container_width=True)
+h = summary_block(hcin, 'HCIN')
+o = summary_block(ott, 'ONEOTT')
 
-with col2:
-    if 'owner' in df.columns:
-        pen_owner = df.groupby('owner').agg(
-            tickets=('ticket_id', 'count'),
-            penalty=('penalty_est', 'sum'),
-            breaches=('penalty_est', lambda x: (x > 0).sum())
-        ).reset_index().sort_values('penalty', ascending=False)
-        fig = px.bar(pen_owner, x='owner', y='penalty', color='penalty',
-                     color_continuous_scale='Reds', text='penalty',
-                     title="Auto Penalty by Vendor/Owner (₹)")
-        fig.update_layout(template='plotly_dark', height=360, xaxis_tickangle=-20)
-        st.plotly_chart(fig, use_container_width=True)
+# ========== SIDE BY SIDE ==========
+st.subheader("⚡ HCIN vs ONEOTT — Alag Penalty")
+
+col_h, col_o = st.columns(2)
+
+with col_h:
+    st.markdown("### 🏢 HCIN")
+    st.metric("Total Tickets", h['total'])
+    a, b, c, d = st.columns(4)
+    a.metric("Within SLA", h['within'])
+    b.metric("L1", h['l1'])
+    c.metric("L2", h['l2'])
+    d.metric("L3", h['l3'])
+    st.metric("**HCIN Total Penalty ₹**", f"{h['penalty']:,}")
+    st.caption(f"Breaches: {h['breaches']}")
+
+with col_o:
+    st.markdown("### 🌐 ONEOTT")
+    st.metric("Total Tickets", o['total'])
+    a, b, c, d = st.columns(4)
+    a.metric("Within SLA", o['within'])
+    b.metric("L1", o['l1'])
+    c.metric("L2", o['l2'])
+    d.metric("L3", o['l3'])
+    st.metric("**ONEOTT Total Penalty ₹**", f"{o['penalty']:,}")
+    st.caption(f"Breaches: {o['breaches']}")
+
+# Comparison bar
+st.markdown("#### Penalty Comparison")
+comp = pd.DataFrame({
+    'ISP': ['HCIN', 'ONEOTT', 'HCIN', 'ONEOTT'],
+    'Type': ['Penalty ₹', 'Penalty ₹', 'Breach Count', 'Breach Count'],
+    'Value': [h['penalty'], o['penalty'], h['breaches'], o['breaches']]
+})
+fig = px.bar(comp[comp['Type'] == 'Penalty ₹'], x='ISP', y='Value', color='ISP',
+             color_discrete_map={'HCIN': '#38bdf8', 'ONEOTT': '#f97316'},
+             text='Value', title="Total Estimated Penalty (₹)")
+fig.update_layout(template='plotly_dark', height=350)
+st.plotly_chart(fig, use_container_width=True)
+
+st.markdown("---")
+
+# ========== DETAILED BREACH LISTS ==========
+tab1, tab2, tab3 = st.tabs(["🏢 HCIN Breaches", "🌐 ONEOTT Breaches", "📋 Summary Table"])
+
+show_cols = ['ticket_id', 'site_code', 'submitted_time', 'resolved_time', 'resolution_hours',
+             'sla_status', 'penalty_est', 'state', 'city', 'reason_clean', 'owner']
+
+with tab1:
+    if hcin.empty:
+        st.info("HCIN data nahi")
     else:
-        st.info("Owner column nahi")
+        hb = hcin[hcin['penalty_est'] > 0].sort_values('resolution_hours', ascending=False)
+        if hb.empty:
+            st.success("HCIN — koi penalty breach nahi")
+        else:
+            cols = [c for c in show_cols if c in hb.columns]
+            st.dataframe(hb[cols], use_container_width=True, height=400)
+            st.download_button(
+                "📥 HCIN Penalty List",
+                data=hb[cols].to_csv(index=False).encode('utf-8'),
+                file_name=f"Penalty_HCIN_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                key="dl_hcin"
+            )
+
+with tab2:
+    if ott.empty:
+        st.info("ONEOTT data nahi")
+    else:
+        ob = ott[ott['penalty_est'] > 0].sort_values('resolution_hours', ascending=False)
+        if ob.empty:
+            st.success("ONEOTT — koi penalty breach nahi")
+        else:
+            cols = [c for c in show_cols if c in ob.columns]
+            st.dataframe(ob[cols], use_container_width=True, height=400)
+            st.download_button(
+                "📥 ONEOTT Penalty List",
+                data=ob[cols].to_csv(index=False).encode('utf-8'),
+                file_name=f"Penalty_ONEOTT_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                key="dl_ott"
+            )
+
+with tab3:
+    summary = pd.DataFrame({
+        'Metric': ['Total Tickets', 'Within SLA', 'L1 Breach', 'L2 Breach', 'L3 Critical',
+                   'Total Breaches', 'Estimated Penalty (₹)'],
+        'HCIN': [h['total'], h['within'], h['l1'], h['l2'], h['l3'], h['breaches'], h['penalty']],
+        'ONEOTT': [o['total'], o['within'], o['l1'], o['l2'], o['l3'], o['breaches'], o['penalty']],
+    })
+    st.dataframe(summary, use_container_width=True)
+
+    def to_excel():
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            summary.to_excel(writer, index=False, sheet_name='Summary')
+            if not hcin.empty:
+                hcin[hcin['penalty_est'] > 0].to_excel(writer, index=False, sheet_name='HCIN_Breaches')
+            if not ott.empty:
+                ott[ott['penalty_est'] > 0].to_excel(writer, index=False, sheet_name='ONEOTT_Breaches')
+        return output.getvalue()
+
+    st.download_button(
+        "📥 Download Both ISPs Penalty Report",
+        data=to_excel(),
+        file_name=f"XTRNATE_Penalty_HCIN_ONEOTT_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 st.markdown("---")
 
-# ========== VENDOR AUTO PENALTY TABLE ==========
-st.subheader("🏭 Vendor-wise Auto Penalty")
-if 'owner' in df.columns:
-    vendor_pen = df.groupby('owner').agg(
-        total_tickets=('ticket_id', 'count'),
-        within_sla=('sla_status', lambda x: (x == 'Within SLA').sum()),
-        breaches=('penalty_est', lambda x: (x > 0).sum()),
-        total_penalty_inr=('penalty_est', 'sum'),
-        avg_resolution_hrs=('resolution_hours', 'mean')
-    ).reset_index()
-    vendor_pen['avg_resolution_hrs'] = vendor_pen['avg_resolution_hrs'].round(1)
-    vendor_pen['total_penalty_inr'] = vendor_pen['total_penalty_inr'].astype(int)
-    vendor_pen = vendor_pen.sort_values('total_penalty_inr', ascending=False)
-    st.dataframe(vendor_pen, use_container_width=True)
-else:
-    st.info("Owner missing")
-
-st.markdown("---")
-
-# ========== BREACH DETAIL ==========
-st.subheader("🚨 Auto-Detected Breach Tickets")
-breaches = df[df['penalty_est'] > 0].sort_values('resolution_hours', ascending=False)
-if breaches.empty:
-    st.success("Koi penalty applicable ticket nahi (current rules).")
-else:
-    cols = ['ticket_id', 'site_code', 'submitted_time', 'resolved_time', 'resolution_hours',
-            'sla_status', 'penalty_est', 'owner', 'state', 'city', 'reason_clean']
-    cols = [c for c in cols if c in breaches.columns]
-    st.dataframe(breaches[cols], use_container_width=True, height=400)
-
-st.markdown("---")
-
-# ========== OPEN TICKETS PROJECTED PENALTY ==========
-st.subheader("📞 Open Tickets — Projected Penalty (if closed now)")
-st.caption("Jo tickets abhi open hain, unka current open hours ke hisaab se projected SLA / penalty")
-
+# Open projected — separate
+st.subheader("📞 Open Tickets — Projected Penalty (Alag)")
 if open_df is not None and not open_df.empty and 'open_hours' in open_df.columns:
-    op = open_df.copy()
-    op_results = op['open_hours'].apply(lambda h: calc_sla(h))
-    op['projected_sla'] = op_results.apply(lambda x: x[0])
-    op['projected_penalty'] = op_results.apply(lambda x: x[1])
+    def proj(d):
+        if d is None or d.empty:
+            return 0, 0
+        x = d.copy()
+        def calc(hours):
+            if pd.isna(hours):
+                return 0
+            if hours > rules['l3_hours']:
+                return rules['l3_penalty']
+            if hours > rules['l2_hours']:
+                return rules['l2_penalty']
+            if hours > rules['l1_hours']:
+                return rules['l1_penalty']
+            return 0
+        x['proj'] = x['open_hours'].apply(calc)
+        return int((x['proj'] > 0).sum()), int(x['proj'].sum())
 
-    proj_total = int(op['projected_penalty'].sum())
-    proj_breach = int((op['projected_penalty'] > 0).sum())
+    hcin_o = get_isp_slice(open_df, 'HCIN')
+    ott_o = get_isp_slice(open_df, 'ONEOTT')
+    hb_c, hb_p = proj(hcin_o)
+    ob_c, ob_p = proj(ott_o)
 
-    st.metric("Open tickets already past SLA", proj_breach)
-    st.metric("Projected penalty if resolved now (₹)", f"{proj_total:,}")
-
-    op_show = op[op['projected_penalty'] > 0].sort_values('open_hours', ascending=False)
-    if not op_show.empty:
-        ocols = ['ticket_id', 'site_code', 'status', 'open_hours', 'projected_sla', 'projected_penalty', 'state', 'owner']
-        ocols = [c for c in ocols if c in op_show.columns]
-        st.dataframe(op_show[ocols], use_container_width=True, height=300)
-    else:
-        st.success("Saare open tickets abhi Within SLA hain.")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**HCIN Open**")
+        st.metric("Past SLA (open)", hb_c)
+        st.metric("Projected ₹", f"{hb_p:,}")
+    with c2:
+        st.markdown("**ONEOTT Open**")
+        st.metric("Past SLA (open)", ob_c)
+        st.metric("Projected ₹", f"{ob_p:,}")
 else:
-    st.info("Open data nahi / open_hours missing")
-
-# ========== DOWNLOAD ==========
-st.markdown("---")
-
-def to_excel(frames: dict):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        for name, frame in frames.items():
-            frame.to_excel(writer, index=False, sheet_name=name[:31])
-    return output.getvalue()
-
-export = {
-    'Breach_List': breaches[cols] if not breaches.empty else pd.DataFrame(),
-}
-if 'owner' in df.columns:
-    export['Vendor_Penalty'] = vendor_pen
-
-st.download_button(
-    "📥 Download Auto Penalty Report (Excel)",
-    data=to_excel(export),
-    file_name=f"XTRNATE_Auto_Penalty_{isp}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-
-st.info("Penalty **auto** calculate hoti hai har load pe. Exact contract clause alag ho to rules expander mein values badal do.")
+    st.info("Open data nahi")
