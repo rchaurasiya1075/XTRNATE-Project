@@ -28,31 +28,45 @@ with tab1:
     
     if closed_file is not None:
         try:
-            if closed_file.name.endswith('.csv'):
+            if closed_file.name.lower().endswith('.csv'):
                 df = pd.read_csv(closed_file)
             else:
-                df = pd.read_excel(closed_file)
+                # Force openpyxl for better compatibility
+                df = pd.read_excel(closed_file, engine='openpyxl')
             
-            st.write("Raw Preview:")
+            # Clean column names early
+            df.columns = [str(c).strip() for c in df.columns]
+            
+            st.write("Raw Preview (first 5 rows):")
             st.dataframe(df.head(5), use_container_width=True)
+            
+            st.write("Detected columns:")
+            st.write(list(df.columns))
             
             processed = process_closed_tickets(df)
             
-            if st.session_state.get('site_master') is not None:
-                processed = merge_with_site_master(processed, st.session_state.site_master)
-                st.success("Merged with Site Master data")
-            
-            st.session_state.closed_df = processed
-            st.success(f"✅ Closed tickets loaded successfully! Total rows: {len(processed)}")
-            
-            st.write("Processed Preview:")
-            st.dataframe(processed.head(8), use_container_width=True)
-            
-            with st.expander("Detected Columns"):
-                st.write(list(processed.columns))
+            if processed is None or processed.empty:
+                st.error("Processing returned empty data. Check column names.")
+            else:
+                if st.session_state.get('site_master') is not None:
+                    try:
+                        processed = merge_with_site_master(processed, st.session_state.site_master)
+                        st.success("Merged with Site Master data")
+                    except Exception as me:
+                        st.warning(f"Site Master merge skipped: {me}")
+                
+                st.session_state.closed_df = processed
+                st.success(f"✅ Closed tickets loaded successfully! Total rows: {len(processed)}")
+                
+                st.write("Processed Preview:")
+                st.dataframe(processed.head(8), use_container_width=True)
+                
+                with st.expander("Final Processed Columns"):
+                    st.write(list(processed.columns))
                 
         except Exception as e:
             st.error(f"Error processing file: {e}")
+            st.exception(e)   # shows full traceback for debugging
 
 with tab2:
     st.subheader("Open Tickets Excel")
@@ -62,10 +76,12 @@ with tab2:
     
     if open_file is not None:
         try:
-            if open_file.name.endswith('.csv'):
+            if open_file.name.lower().endswith('.csv'):
                 df = pd.read_csv(open_file)
             else:
-                df = pd.read_excel(open_file)
+                df = pd.read_excel(open_file, engine='openpyxl')
+            
+            df.columns = [str(c).strip() for c in df.columns]
             
             st.write("Raw Preview:")
             st.dataframe(df.head(5), use_container_width=True)
@@ -73,31 +89,36 @@ with tab2:
             processed = process_open_tickets(df)
             
             if st.session_state.get('site_master') is not None:
-                processed = merge_with_site_master(processed, st.session_state.site_master)
-                st.success("Merged with Site Master data")
+                try:
+                    processed = merge_with_site_master(processed, st.session_state.site_master)
+                    st.success("Merged with Site Master data")
+                except Exception as me:
+                    st.warning(f"Site Master merge skipped: {me}")
             
             st.session_state.open_df = processed
             st.success(f"✅ Open tickets loaded successfully! Total rows: {len(processed)}")
             
-            st.write("Processed Preview (with open_hours calculated):")
+            st.write("Processed Preview:")
             st.dataframe(processed.head(8), use_container_width=True)
             
         except Exception as e:
             st.error(f"Error processing file: {e}")
+            st.exception(e)
 
 with tab3:
     st.subheader("Site Master Data")
     st.caption("Upload the master list containing Site Code → Bank, Branch, State, ISP, Partner etc.")
-    st.markdown("You can also download from your Google Sheet and upload here.")
     
     site_file = st.file_uploader("Upload Site Master Excel/CSV", type=['xlsx', 'xls', 'csv'], key="site_upload")
     
     if site_file is not None:
         try:
-            if site_file.name.endswith('.csv'):
+            if site_file.name.lower().endswith('.csv'):
                 df = pd.read_csv(site_file)
             else:
-                df = pd.read_excel(site_file)
+                df = pd.read_excel(site_file, engine='openpyxl')
+            
+            df.columns = [str(c).strip() for c in df.columns]
             
             processed = process_site_master(df)
             st.session_state.site_master = processed
@@ -105,14 +126,21 @@ with tab3:
             st.dataframe(processed.head(10), use_container_width=True)
             
             if st.session_state.get('closed_df') is not None:
-                st.session_state.closed_df = merge_with_site_master(st.session_state.closed_df, processed)
-                st.info("Closed tickets re-merged with new Site Master")
+                try:
+                    st.session_state.closed_df = merge_with_site_master(st.session_state.closed_df, processed)
+                    st.info("Closed tickets re-merged with new Site Master")
+                except:
+                    pass
             if st.session_state.get('open_df') is not None:
-                st.session_state.open_df = merge_with_site_master(st.session_state.open_df, processed)
-                st.info("Open tickets re-merged with new Site Master")
+                try:
+                    st.session_state.open_df = merge_with_site_master(st.session_state.open_df, processed)
+                    st.info("Open tickets re-merged with new Site Master")
+                except:
+                    pass
                 
         except Exception as e:
             st.error(f"Error: {e}")
+            st.exception(e)
 
 st.markdown("---")
 st.subheader("Current Loaded Data Status")
