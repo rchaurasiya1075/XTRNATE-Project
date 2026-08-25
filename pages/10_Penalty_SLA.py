@@ -29,7 +29,6 @@ if 'resolution_days' not in df_all.columns:
     st.error("resolution_days nahi hai. Submitted + Resolved Time-Active chahiye.")
     st.stop()
 
-# ========== RULES ==========
 if 'penalty_rules' not in st.session_state:
     st.session_state.penalty_rules = {
         'l1_hours': 24, 'l1_penalty': 500,
@@ -37,7 +36,7 @@ if 'penalty_rules' not in st.session_state:
         'l3_hours': 120, 'l3_penalty': 5000,
     }
 
-with st.expander("⚙️ Penalty Rules (dono vendors pe same apply)")
+with st.expander("⚙️ Penalty Rules (dono vendors pe same apply)"):
     r = st.session_state.penalty_rules
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -88,14 +87,10 @@ ott_raw = get_isp_slice(df_all, 'ONEOTT')
 hcin = apply_penalty(hcin_raw)
 ott = apply_penalty(ott_raw)
 
-def summary_block(d, title):
+def summary_block(d):
     if d.empty:
-        return {
-            'title': title, 'total': 0, 'within': 0, 'l1': 0, 'l2': 0, 'l3': 0,
-            'penalty': 0, 'breaches': 0
-        }
+        return {'total': 0, 'within': 0, 'l1': 0, 'l2': 0, 'l3': 0, 'penalty': 0, 'breaches': 0}
     return {
-        'title': title,
         'total': len(d),
         'within': int((d['sla_status'] == 'Within SLA').sum()),
         'l1': int((d['sla_status'] == 'L1 Breach').sum()),
@@ -105,10 +100,9 @@ def summary_block(d, title):
         'breaches': int((d['penalty_est'] > 0).sum()),
     }
 
-h = summary_block(hcin, 'HCIN')
-o = summary_block(ott, 'ONEOTT')
+h = summary_block(hcin)
+o = summary_block(ott)
 
-# ========== SIDE BY SIDE ==========
 st.subheader("⚡ HCIN vs ONEOTT — Alag Penalty")
 
 col_h, col_o = st.columns(2)
@@ -116,41 +110,38 @@ col_h, col_o = st.columns(2)
 with col_h:
     st.markdown("### 🏢 HCIN")
     st.metric("Total Tickets", h['total'])
-    a, b, c, d = st.columns(4)
+    a, b, c, d_ = st.columns(4)
     a.metric("Within SLA", h['within'])
     b.metric("L1", h['l1'])
     c.metric("L2", h['l2'])
-    d.metric("L3", h['l3'])
-    st.metric("**HCIN Total Penalty ₹**", f"{h['penalty']:,}")
+    d_.metric("L3", h['l3'])
+    st.metric("HCIN Total Penalty ₹", f"{h['penalty']:,}")
     st.caption(f"Breaches: {h['breaches']}")
 
 with col_o:
     st.markdown("### 🌐 ONEOTT")
     st.metric("Total Tickets", o['total'])
-    a, b, c, d = st.columns(4)
+    a, b, c, d_ = st.columns(4)
     a.metric("Within SLA", o['within'])
     b.metric("L1", o['l1'])
     c.metric("L2", o['l2'])
-    d.metric("L3", o['l3'])
-    st.metric("**ONEOTT Total Penalty ₹**", f"{o['penalty']:,}")
+    d_.metric("L3", o['l3'])
+    st.metric("ONEOTT Total Penalty ₹", f"{o['penalty']:,}")
     st.caption(f"Breaches: {o['breaches']}")
 
-# Comparison bar
 st.markdown("#### Penalty Comparison")
 comp = pd.DataFrame({
-    'ISP': ['HCIN', 'ONEOTT', 'HCIN', 'ONEOTT'],
-    'Type': ['Penalty ₹', 'Penalty ₹', 'Breach Count', 'Breach Count'],
-    'Value': [h['penalty'], o['penalty'], h['breaches'], o['breaches']]
+    'ISP': ['HCIN', 'ONEOTT'],
+    'Penalty_INR': [h['penalty'], o['penalty']]
 })
-fig = px.bar(comp[comp['Type'] == 'Penalty ₹'], x='ISP', y='Value', color='ISP',
+fig = px.bar(comp, x='ISP', y='Penalty_INR', color='ISP',
              color_discrete_map={'HCIN': '#38bdf8', 'ONEOTT': '#f97316'},
-             text='Value', title="Total Estimated Penalty (₹)")
+             text='Penalty_INR', title="Total Estimated Penalty (₹)")
 fig.update_layout(template='plotly_dark', height=350)
 st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 
-# ========== DETAILED BREACH LISTS ==========
 tab1, tab2, tab3 = st.tabs(["🏢 HCIN Breaches", "🌐 ONEOTT Breaches", "📋 Summary Table"])
 
 show_cols = ['ticket_id', 'site_code', 'submitted_time', 'resolved_time', 'resolution_hours',
@@ -205,9 +196,9 @@ with tab3:
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             summary.to_excel(writer, index=False, sheet_name='Summary')
-            if not hcin.empty:
+            if not hcin.empty and (hcin['penalty_est'] > 0).any():
                 hcin[hcin['penalty_est'] > 0].to_excel(writer, index=False, sheet_name='HCIN_Breaches')
-            if not ott.empty:
+            if not ott.empty and (ott['penalty_est'] > 0).any():
                 ott[ott['penalty_est'] > 0].to_excel(writer, index=False, sheet_name='ONEOTT_Breaches')
         return output.getvalue()
 
@@ -219,8 +210,6 @@ with tab3:
     )
 
 st.markdown("---")
-
-# Open projected — separate
 st.subheader("📞 Open Tickets — Projected Penalty (Alag)")
 if open_df is not None and not open_df.empty and 'open_hours' in open_df.columns:
     def proj(d):
