@@ -95,7 +95,6 @@ rows = []
 for d in all_dates:
     date_str = d.strftime('%d-%b-%Y')
     if is_holiday(d):
-        # All values as strings so HOLIDAY works without dtype error
         row = {'DATE': date_str, '_holiday': True}
         row['< 2 HRS'] = 'HOLIDAY'
         for c in num_cols[1:]:
@@ -127,7 +126,6 @@ for d in all_dates:
 
 daily = pd.DataFrame(rows)
 
-# Totals from non-holiday numeric rows
 def to_num(val):
     try:
         return int(val)
@@ -137,7 +135,7 @@ def to_num(val):
 work = daily[~daily['_holiday']].copy()
 totals = {c: int(work[c].map(to_num).sum()) for c in num_cols}
 
-# KPI
+# KPI cards
 st.markdown("### KPI Summary")
 k1, k2, k3 = st.columns(3)
 hcin_kpi = totals['HCIN (<24H)'] + totals['HCIN (>24H)']
@@ -145,48 +143,136 @@ ott_kpi = totals['OTT (<24H)'] + totals['OTT (>24H)']
 
 with k1:
     st.markdown(f"""
-    <div style="background:#EFF6FF;border:2px solid #93C5FD;border-radius:12px;padding:1.2rem;text-align:center;">
-        <div style="color:#1E40AF;font-weight:700;">📊 TOTAL RESOLVED</div>
-        <div style="color:#1E40AF;font-weight:800;font-size:2rem;">{totals['TOTAL RESOLVED']}</div>
+    <div style="background:linear-gradient(135deg,#EFF6FF,#DBEAFE);border:2px solid #3B82F6;border-radius:14px;padding:1.3rem;text-align:center;box-shadow:0 4px 14px rgba(59,130,246,0.25);">
+        <div style="color:#1E40AF;font-weight:700;letter-spacing:0.5px;">📊 TOTAL RESOLVED</div>
+        <div style="color:#1E3A8A;font-weight:800;font-size:2.2rem;margin-top:4px;">{totals['TOTAL RESOLVED']}</div>
     </div>
     """, unsafe_allow_html=True)
 with k2:
     st.markdown(f"""
-    <div style="background:#ECFDF5;border:2px solid #6EE7B7;border-radius:12px;padding:1.2rem;text-align:center;">
-        <div style="color:#047857;font-weight:700;">🏢 HCIN TOTAL</div>
-        <div style="color:#047857;font-weight:800;font-size:2rem;">{hcin_kpi}</div>
+    <div style="background:linear-gradient(135deg,#ECFDF5,#D1FAE5);border:2px solid #10B981;border-radius:14px;padding:1.3rem;text-align:center;box-shadow:0 4px 14px rgba(16,185,129,0.25);">
+        <div style="color:#047857;font-weight:700;letter-spacing:0.5px;">🏢 HCIN TOTAL</div>
+        <div style="color:#065F46;font-weight:800;font-size:2.2rem;margin-top:4px;">{hcin_kpi}</div>
     </div>
     """, unsafe_allow_html=True)
 with k3:
     st.markdown(f"""
-    <div style="background:#F3E8FF;border:2px solid #D8B4FE;border-radius:12px;padding:1.2rem;text-align:center;">
-        <div style="color:#6B21A8;font-weight:700;">🌐 OTT / CELERITY TOTAL</div>
-        <div style="color:#6B21A8;font-weight:800;font-size:2rem;">{ott_kpi}</div>
+    <div style="background:linear-gradient(135deg,#F3E8FF,#E9D5FF);border:2px solid #A855F7;border-radius:14px;padding:1.3rem;text-align:center;box-shadow:0 4px 14px rgba(168,85,247,0.25);">
+        <div style="color:#6B21A8;font-weight:700;letter-spacing:0.5px;">🌐 OTT / CELERITY TOTAL</div>
+        <div style="color:#581C87;font-weight:800;font-size:2.2rem;margin-top:4px;">{ott_kpi}</div>
     </div>
     """, unsafe_allow_html=True)
 
 st.markdown("---")
 st.subheader(f"Daily Sheet — {selected_month}")
 
-# Force all display columns to string-safe object dtype for mixed HOLIDAY + numbers
 display_cols = ['DATE'] + num_cols
 show = daily[display_cols].copy()
-for c in num_cols:
-    show[c] = show[c].apply(lambda x: x if x == 'HOLIDAY' or x == '' else to_num(x))
 
-# TOTAL row as strings/numbers mixed safely
+# Normalize for styling
+for c in num_cols:
+    show[c] = show[c].apply(lambda x: x if str(x) == 'HOLIDAY' or str(x) == '' else to_num(x))
+
 total_row = {'DATE': 'TOTAL'}
 for c in num_cols:
     total_row[c] = totals[c]
 show = pd.concat([show, pd.DataFrame([total_row])], ignore_index=True)
 
-# Convert entire frame to object for Streamlit display safety
-show_display = show.astype(object)
+def style_sla_table(df):
+    """Colorful heatmap + holiday + TOTAL styling"""
 
-st.dataframe(show_display, use_container_width=True, height=520, hide_index=True)
-st.caption("HOLIDAY = Sunday + 2nd Saturday + 4th Saturday")
+    green_cols = ['< 2 HRS', '< 4 HRS', '< 8 HRS']
+    yellow_cols = ['< 24 HRS']
+    red_cols = ['> 24 HRS', '> 48 HRS', '> 72 HRS']
 
-# Charts — only numeric work days
+    def apply_style(row):
+        styles = [''] * len(row)
+        is_total = str(row['DATE']).upper() == 'TOTAL'
+        is_hol = any(str(row.get(c, '')) == 'HOLIDAY' for c in green_cols)
+
+        if is_total:
+            return ['background-color: #334155; color: #FFFFFF; font-weight: 800; border: 1px solid #0F172A; text-align: center;'] * len(row)
+
+        if is_hol:
+            return ['background-color: #FEE2E2; color: #991B1B; font-weight: 700; border: 1px solid #FECACA; text-align: center;'] * len(row)
+
+        # DATE column
+        styles[0] = 'background-color: #F1F5F9; color: #0F172A; font-weight: 700; border: 1px solid #CBD5E1; text-align: center;'
+
+        for i, col in enumerate(df.columns):
+            if col == 'DATE':
+                continue
+            val = row[col]
+            try:
+                num = int(val)
+            except Exception:
+                num = 0
+
+            base = 'border: 1px solid #E2E8F0; text-align: center; font-weight: 600;'
+
+            if col in green_cols:
+                if num == 0:
+                    styles[i] = base + ' background-color: #F8FAFC; color: #94A3B8;'
+                else:
+                    styles[i] = base + ' background-color: #ECFDF5; color: #047857; font-weight: 800;'
+            elif col in yellow_cols:
+                if num == 0:
+                    styles[i] = base + ' background-color: #F8FAFC; color: #94A3B8;'
+                else:
+                    styles[i] = base + ' background-color: #FFFBEB; color: #B45309; font-weight: 800;'
+            elif col in red_cols:
+                if num == 0:
+                    styles[i] = base + ' background-color: #F8FAFC; color: #94A3B8;'
+                else:
+                    styles[i] = base + ' background-color: #FFF1F2; color: #BE123C; font-weight: 800;'
+            elif col == 'TOTAL RESOLVED':
+                styles[i] = base + ' background-color: #E0F2FE; color: #0369A1; font-weight: 800;'
+            elif col == 'HCIN (<24H)':
+                styles[i] = base + (' background-color: #ECFDF5; color: #047857; font-weight: 800;' if num else ' background-color: #F8FAFC; color: #94A3B8;')
+            elif col == 'HCIN (>24H)':
+                styles[i] = base + (' background-color: #FFF1F2; color: #BE123C; font-weight: 800;' if num else ' background-color: #F8FAFC; color: #94A3B8;')
+            elif col == 'OTT (<24H)':
+                styles[i] = base + (' background-color: #F3E8FF; color: #6B21A8; font-weight: 800;' if num else ' background-color: #F8FAFC; color: #94A3B8;')
+            elif col == 'OTT (>24H)':
+                styles[i] = base + (' background-color: #FFF1F2; color: #BE123C; font-weight: 800;' if num else ' background-color: #F8FAFC; color: #94A3B8;')
+            else:
+                styles[i] = base
+
+        return styles
+
+    styled = df.style.apply(apply_style, axis=1)
+    styled = styled.set_table_styles([
+        {'selector': 'th', 'props': [
+            ('background-color', '#0F172A'),
+            ('color', '#FFFFFF'),
+            ('font-weight', '800'),
+            ('text-align', 'center'),
+            ('border', '1px solid #475569'),
+            ('padding', '10px 6px'),
+            ('font-size', '12px'),
+        ]},
+        {'selector': 'td', 'props': [
+            ('padding', '8px 6px'),
+            ('font-size', '13px'),
+        ]},
+        {'selector': 'table', 'props': [
+            ('border-collapse', 'collapse'),
+            ('width', '100%'),
+            ('border', '2px solid #334155'),
+        ]},
+    ])
+    return styled
+
+st.dataframe(
+    style_sla_table(show),
+    use_container_width=True,
+    height=560,
+    hide_index=True
+)
+
+st.caption("🟢 Green = fast (<8h)  |  🟡 Yellow = <24h  |  🔴 Red = late (>24h)  |  HOLIDAY = Sun + 2nd/4th Sat  |  Dark row = TOTAL")
+
+# Charts
 st.markdown("---")
 col1, col2 = st.columns(2)
 
@@ -221,7 +307,7 @@ st.plotly_chart(fig, use_container_width=True)
 
 def to_excel():
     out = BytesIO()
-    export = show_display.copy()
+    export = show.copy()
     with pd.ExcelWriter(out, engine='xlsxwriter') as writer:
         export.to_excel(writer, index=False, sheet_name=selected_month[:31])
         summary = pd.DataFrame({
