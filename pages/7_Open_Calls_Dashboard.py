@@ -23,7 +23,7 @@ open_df = st.session_state.get('open_df')
 closed_df = st.session_state.get('closed_df')
 
 if open_df is None or open_df.empty:
-    st.warning("No open tickets data found. Please upload **Open Tickets Excel** from Upload Data page.")
+    st.warning("No open tickets data found. Please upload Tickets Excel from **Upload Data** page (Auto Split tab).")
     st.stop()
 
 # Filter by ISP
@@ -38,7 +38,6 @@ if 'status' in open_df.columns:
     mask = status_lower.str.contains('assign to fe') | status_lower.str.contains('call on hold') | status_lower.str.contains('on hold')
     open_calls = open_df[mask].copy()
     if open_calls.empty:
-        # if filter removes everything, show all open as fallback
         open_calls = open_df.copy()
         st.info("Status filter mein Assign to FE / Call on Hold nahi mila, isliye saare open tickets dikha raha hoon.")
 else:
@@ -46,28 +45,22 @@ else:
 
 st.markdown(f"**Active ISP:** `{isp}` | **Open Calls (Assign to FE + On Hold):** **{len(open_calls)}**")
 
-# Apply escalation
 matrix = load_escalation_matrix(isp if isp != "ALL" else "HCIN")
 open_esc = apply_escalation_to_open(open_calls, matrix)
 
-# ========== SUMMARY CARDS ==========
+# ========== SUMMARY ==========
 st.subheader("Summary")
 c1, c2, c3, c4, c5 = st.columns(5)
-
 with c1:
     st.metric("Total Open Calls", len(open_esc))
 with c2:
-    l1 = len(open_esc[open_esc['escalation_level'] == 'L1']) if 'escalation_level' in open_esc.columns else 0
-    st.metric("L1", l1)
+    st.metric("L1", len(open_esc[open_esc.get('escalation_level') == 'L1']) if 'escalation_level' in open_esc.columns else 0)
 with c3:
-    l2 = len(open_esc[open_esc['escalation_level'] == 'L2']) if 'escalation_level' in open_esc.columns else 0
-    st.metric("L2", l2)
+    st.metric("L2", len(open_esc[open_esc.get('escalation_level') == 'L2']) if 'escalation_level' in open_esc.columns else 0)
 with c4:
-    l3 = len(open_esc[open_esc['escalation_level'] == 'L3']) if 'escalation_level' in open_esc.columns else 0
-    st.metric("L3", l3)
+    st.metric("L3", len(open_esc[open_esc.get('escalation_level') == 'L3']) if 'escalation_level' in open_esc.columns else 0)
 with c5:
-    l4 = len(open_esc[open_esc['escalation_level'] == 'L4']) if 'escalation_level' in open_esc.columns else 0
-    st.metric("L4 (Critical)", l4)
+    st.metric("L4 (Critical)", len(open_esc[open_esc.get('escalation_level') == 'L4']) if 'escalation_level' in open_esc.columns else 0)
 
 st.markdown("---")
 
@@ -104,37 +97,24 @@ def highlight_level(row):
     color = get_escalation_color(row.get('escalation_level', 'L1'))
     return [f'background-color: {color}33'] * len(row)
 
-display_cols = [
-    'ticket_id', 'site_code', 'status', 'state', 'city',
-    'submitted_time', 'open_hours', 'escalation_level', 'escalation_person',
-    'reason', 'owner'
-]
+display_cols = ['ticket_id', 'site_code', 'status', 'state', 'city', 'submitted_time', 'open_hours',
+                'escalation_level', 'escalation_person', 'reason', 'owner']
 display_cols = [c for c in display_cols if c in filtered.columns]
 
 show_df = filtered[display_cols].sort_values('open_hours', ascending=False) if 'open_hours' in filtered.columns else filtered[display_cols]
+st.dataframe(show_df.style.apply(highlight_level, axis=1), use_container_width=True, height=420)
 
-st.dataframe(
-    show_df.style.apply(highlight_level, axis=1),
-    use_container_width=True,
-    height=420
-)
-
-# ========== STATE / CITY BREAKDOWN ==========
+# ========== STATE / STATUS ==========
 st.markdown("---")
 col1, col2 = st.columns(2)
-
 with col1:
     st.subheader("Open Calls by State")
     if 'state' in filtered.columns:
         state_c = filtered['state'].value_counts().reset_index()
         state_c.columns = ['State', 'Count']
-        fig = px.bar(state_c, x='State', y='Count', color='Count', text='Count',
-                     color_continuous_scale='Oranges')
+        fig = px.bar(state_c, x='State', y='Count', color='Count', text='Count', color_continuous_scale='Oranges')
         fig.update_layout(template='plotly_dark', height=320)
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("State column missing")
-
 with col2:
     st.subheader("Open Calls by Status")
     if 'status' in filtered.columns:
@@ -143,34 +123,34 @@ with col2:
         fig = px.pie(status_c, names='Status', values='Count', hole=0.4)
         fig.update_layout(template='plotly_dark', height=320)
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Status column missing")
 
-# ========== SITE HISTORY ==========
+# ========== SITE HISTORY (ONLY SELECTED SITE) ==========
 st.markdown("---")
-st.subheader("📜 Site History (Past Downs of Selected Open Site)")
-st.caption("Open call ka Site Code select karo → us site pe pehle kab-kab down hua, kitne din me resolve hua, Last Enclosure reason kya tha.")
+st.subheader("📜 Site History — Selected Site Only")
+st.caption("⚠️ Sirf **selected Site Code** ka history dikhega. Overall nahi.")
 
 if 'site_code' not in filtered.columns or filtered.empty:
     st.info("Koi open call nahi hai ya site_code missing hai.")
 else:
     sites = sorted(filtered['site_code'].dropna().unique().tolist())
-    selected_site = st.selectbox("Select Site Code", sites)
+    selected_site = st.selectbox("Select ONE Site Code", sites, key="open_site_history")
 
-    # Current open on this site
+    st.success(f"Showing data **only for Site: {selected_site}**")
+
+    # Current open
     curr = filtered[filtered['site_code'] == selected_site]
-    st.markdown(f"#### Currently Open on **{selected_site}**")
+    st.markdown(f"#### Currently Open — **{selected_site}**")
     curr_cols = ['ticket_id', 'status', 'submitted_time', 'open_hours', 'reason', 'state', 'city', 'escalation_level']
     curr_cols = [c for c in curr_cols if c in curr.columns]
     st.dataframe(curr[curr_cols], use_container_width=True)
 
-    # History from closed
-    st.markdown(f"#### Previous Downs History — **{selected_site}**")
+    # History of THIS site only
+    st.markdown(f"#### Previous Downs History — **{selected_site}** only")
     if closed_df is not None and not closed_df.empty and 'site_code' in closed_df.columns:
         hist = closed_df[closed_df['site_code'] == selected_site].copy()
 
         if hist.empty:
-            st.info("Is site pe koi previous closed ticket nahi mila.")
+            st.info(f"Site **{selected_site}** pe koi previous closed ticket nahi mila.")
         else:
             if 'submitted_time' in hist.columns:
                 hist = hist.sort_values('submitted_time', ascending=False)
@@ -183,13 +163,12 @@ else:
             if 'category' in hist.columns and not hist['category'].mode().empty:
                 m4.metric("Top Category", hist['category'].mode().iloc[0])
 
-            # Month-wise
             if 'submitted_time' in hist.columns:
                 hist['month'] = hist['submitted_time'].dt.to_period('M').astype(str)
                 month_df = hist['month'].value_counts().sort_index().reset_index()
                 month_df.columns = ['Month', 'Count']
                 fig = px.bar(month_df, x='Month', y='Count', text='Count', color='Count',
-                             color_continuous_scale='Reds', title="Month-wise Previous Downs")
+                             color_continuous_scale='Reds', title=f"Month-wise Downs — {selected_site}")
                 fig.update_layout(template='plotly_dark', height=300)
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -205,15 +184,15 @@ else:
                 return output.getvalue()
 
             st.download_button(
-                f"📥 Download History of {selected_site}",
+                f"📥 Download History of {selected_site} only",
                 data=to_excel(hist[hist_cols]),
-                file_name=f"OpenSite_History_{selected_site}_{isp}.xlsx",
+                file_name=f"History_{selected_site}_{isp}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
     else:
-        st.warning("Closed Tickets data upload nahi hai. History ke liye Closed Excel bhi upload karo.")
+        st.warning("Closed data nahi hai. History ke liye Tickets Excel (Auto Split) upload karo.")
 
-# ========== DOWNLOAD OPEN LIST ==========
+# ========== DOWNLOAD ==========
 st.markdown("---")
 def to_excel_open(df):
     output = BytesIO()
@@ -222,7 +201,7 @@ def to_excel_open(df):
     return output.getvalue()
 
 st.download_button(
-    "📥 Download All Filtered Open Calls",
+    "📥 Download Filtered Open Calls",
     data=to_excel_open(show_df),
     file_name=f"XTRNATE_Open_Calls_{isp}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
