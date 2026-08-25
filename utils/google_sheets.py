@@ -1,6 +1,5 @@
 import pandas as pd
 import streamlit as st
-from io import StringIO
 import re
 
 def extract_sheet_id(url_or_id):
@@ -8,19 +7,17 @@ def extract_sheet_id(url_or_id):
     if not url_or_id:
         return None
     url_or_id = str(url_or_id).strip()
-    # Pattern for spreadsheet ID
     match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', url_or_id)
     if match:
         return match.group(1)
-    # If it's already just the ID
     if re.match(r'^[a-zA-Z0-9-_]{20,}$', url_or_id):
         return url_or_id
     return None
 
 def load_sheet_as_csv(sheet_id, gid=0):
     """
-    Load a Google Sheet using public CSV export.
-    Sheet must be shared as 'Anyone with the link can view'.
+    Load Google Sheet using public CSV export.
+    Sheet must be shared: Anyone with the link can view.
     """
     try:
         url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
@@ -28,13 +25,10 @@ def load_sheet_as_csv(sheet_id, gid=0):
         df.columns = [str(c).strip() for c in df.columns]
         return df
     except Exception as e:
-        raise Exception(f"Google Sheet load failed: {e}. Make sure the sheet is shared as 'Anyone with the link can view'.")
+        raise Exception(f"Google Sheet load failed: {e}. Make sure sheet is shared as 'Anyone with the link can view'.")
 
 def load_sheet_with_gspread(sheet_id, worksheet_name=None):
-    """
-    Load using service account credentials stored in Streamlit secrets.
-    Requires secrets.toml with [google_service_account] section.
-    """
+    """Load using service account from Streamlit secrets."""
     try:
         import gspread
         from google.oauth2.service_account import Credentials
@@ -52,10 +46,7 @@ def load_sheet_with_gspread(sheet_id, worksheet_name=None):
         client = gspread.authorize(creds)
 
         spreadsheet = client.open_by_key(sheet_id)
-        if worksheet_name:
-            worksheet = spreadsheet.worksheet(worksheet_name)
-        else:
-            worksheet = spreadsheet.sheet1
+        worksheet = spreadsheet.worksheet(worksheet_name) if worksheet_name else spreadsheet.sheet1
 
         data = worksheet.get_all_records()
         df = pd.DataFrame(data)
