@@ -10,7 +10,7 @@ from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 st.set_page_config(page_title="Upload Data | XTRNATE", page_icon="📤", layout="wide")
 
 st.title("📤 Upload Data")
-st.markdown("Excel upload **ya** Google Sheet se load karo. Google Sheet data refresh ke baad bhi rahega.")
+st.markdown("Excel upload **ya** Google Sheet se load karo. Google Sheet data refresh ke baad bhi 1 click mein aa jayega.")
 
 isp = st.session_state.get('selected_isp')
 if not isp:
@@ -20,116 +20,63 @@ if not isp:
 st.info(f"Active ISP context: **{isp}**")
 
 tab1, tab2, tab3, tab4 = st.tabs([
-    "📁 Tickets Excel (Auto Split)",
     "☁️ Google Sheet Load",
+    "📁 Tickets Excel (Auto Split)",
     "📂 Open Tickets (Optional)",
     "🗺️ Site Master"
 ])
 
-# ========== TAB 1: Excel Auto Split ==========
+# ========== TAB 1: Google Sheet (Primary) ==========
 with tab1:
-    st.subheader("Tickets Excel (Auto Split by Status)")
-    st.caption("Current Status = Assign to FE / Call on Hold → Open | Resolved / Close → Closed")
-    
-    tickets_file = st.file_uploader("Upload Tickets Excel", type=['xlsx', 'xls', 'csv'], key="tickets_upload")
-    
-    if tickets_file is not None:
-        try:
-            if tickets_file.name.lower().endswith('.csv'):
-                df = pd.read_csv(tickets_file)
-            else:
-                df = pd.read_excel(tickets_file, engine='openpyxl')
-            
-            df.columns = [str(c).strip() for c in df.columns]
-            st.write("Raw Preview:")
-            st.dataframe(df.head(5), use_container_width=True)
-            
-            processed = process_closed_tickets(df)
-            
-            if processed is None or processed.empty:
-                st.error("Processing returned empty data.")
-            else:
-                if 'status' in processed.columns:
-                    status_str = processed['status'].astype(str).str.lower()
-                    open_mask = (
-                        status_str.str.contains('assign to fe', na=False) |
-                        status_str.str.contains('call on hold', na=False) |
-                        status_str.str.contains('on hold', na=False)
-                    )
-                    open_part = processed[open_mask].copy()
-                    closed_part = processed[~open_mask].copy()
-                    
-                    if not open_part.empty:
-                        open_part = process_open_tickets(open_part)
-                    
-                    st.session_state.closed_df = closed_part if not closed_part.empty else None
-                    st.session_state.open_df = open_part if not open_part.empty else None
-                    
-                    st.success(f"✅ Auto-split done! Closed: {len(closed_part)} | Open: {len(open_part)}")
-                else:
-                    st.session_state.closed_df = processed
-                    st.warning("Status column nahi mila. Saara data Closed mein.")
-                
-                if st.session_state.get('site_master') is not None:
-                    try:
-                        if st.session_state.get('closed_df') is not None:
-                            st.session_state.closed_df = merge_with_site_master(st.session_state.closed_df, st.session_state.site_master)
-                        if st.session_state.get('open_df') is not None:
-                            st.session_state.open_df = merge_with_site_master(st.session_state.open_df, st.session_state.site_master)
-                    except:
-                        pass
-        except Exception as e:
-            st.error(f"Error: {e}")
-            st.exception(e)
-
-# ========== TAB 2: Google Sheet ==========
-with tab2:
     st.subheader("☁️ Load from Google Sheet")
     st.markdown("""
-    **Kaise use karein:**
-    1. Apni Google Sheet kholo
-    2. **Share** → **Anyone with the link** → **Viewer**
-    3. Sheet ka full link yahan paste karo
-    4. **gid** (sheet tab number) bhi daal sakte ho (default 0)
+    **Apka sheet already default set hai.**
+    
+    1. Sheet **Share → Anyone with the link → Viewer** hona chahiye
+    2. Data type select karo
+    3. **Load** button dabao
     """)
     
     sheet_url = st.text_input(
-        "Google Sheet URL or ID",
-        value="https://docs.google.com/spreadsheets/d/1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I/edit",
-        help="Pehle wala Site Master sheet already bhar diya hai"
+        "Google Sheet URL",
+        value="https://docs.google.com/spreadsheets/d/1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I/edit?usp=sharing",
+        help="Tickets wala sheet"
     )
     
     col_a, col_b = st.columns(2)
     with col_a:
         gid = st.number_input("Sheet Tab GID (0 = first tab)", min_value=0, value=0, step=1)
     with col_b:
-        data_type = st.selectbox("Yeh data kya hai?", ["Site Master", "Tickets (Auto Split)", "Closed Only", "Open Only"])
+        data_type = st.selectbox("Yeh data kya hai?", [
+            "Tickets (Auto Split by Status)",
+            "Site Master",
+            "Closed Only",
+            "Open Only"
+        ])
     
     if st.button("🔄 Load from Google Sheet", type="primary"):
         sheet_id = extract_sheet_id(sheet_url)
         if not sheet_id:
-            st.error("Invalid Google Sheet URL / ID")
+            st.error("Invalid Google Sheet URL")
         else:
             try:
-                with st.spinner("Loading from Google Sheet..."):
+                with st.spinner("Google Sheet se data load ho raha hai..."):
                     df = load_sheet_as_csv(sheet_id, gid=gid)
                 
-                st.success(f"Loaded {len(df)} rows from Google Sheet")
-                st.dataframe(df.head(8), use_container_width=True)
+                st.success(f"✅ Loaded **{len(df)}** rows from Google Sheet")
+                st.dataframe(df.head(6), use_container_width=True)
                 st.write("Columns:", list(df.columns))
                 
                 if data_type == "Site Master":
                     processed = process_site_master(df)
                     st.session_state.site_master = processed
-                    st.success(f"✅ Site Master loaded: {len(processed)} sites")
-                    
-                    # Re-merge existing tickets
+                    st.success(f"Site Master loaded: {len(processed)} sites")
                     if st.session_state.get('closed_df') is not None:
                         st.session_state.closed_df = merge_with_site_master(st.session_state.closed_df, processed)
                     if st.session_state.get('open_df') is not None:
                         st.session_state.open_df = merge_with_site_master(st.session_state.open_df, processed)
                 
-                elif data_type == "Tickets (Auto Split)":
+                elif data_type == "Tickets (Auto Split by Status)":
                     processed = process_closed_tickets(df)
                     if 'status' in processed.columns:
                         status_str = processed['status'].astype(str).str.lower()
@@ -144,7 +91,10 @@ with tab2:
                             open_part = process_open_tickets(open_part)
                         st.session_state.closed_df = closed_part if not closed_part.empty else None
                         st.session_state.open_df = open_part if not open_part.empty else None
-                        st.success(f"✅ Split done! Closed: {len(closed_part)} | Open: {len(open_part)}")
+                        st.success(f"✅ Auto-split done!\n- Closed / Resolved: **{len(closed_part)}**\n- Open (Assign to FE / On Hold): **{len(open_part)}**")
+                        if not open_part.empty:
+                            st.write("Open preview:")
+                            st.dataframe(open_part.head(5), use_container_width=True)
                     else:
                         st.session_state.closed_df = processed
                         st.warning("Status column nahi mila → saara Closed")
@@ -152,14 +102,14 @@ with tab2:
                 elif data_type == "Closed Only":
                     processed = process_closed_tickets(df)
                     st.session_state.closed_df = processed
-                    st.success(f"✅ Closed loaded: {len(processed)}")
+                    st.success(f"Closed loaded: {len(processed)}")
                 
                 elif data_type == "Open Only":
                     processed = process_open_tickets(df)
                     st.session_state.open_df = processed
-                    st.success(f"✅ Open loaded: {len(processed)}")
+                    st.success(f"Open loaded: {len(processed)}")
                 
-                # Auto merge site master
+                # Merge site master if available
                 if st.session_state.get('site_master') is not None and data_type != "Site Master":
                     try:
                         if st.session_state.get('closed_df') is not None:
@@ -171,12 +121,45 @@ with tab2:
                         
             except Exception as e:
                 st.error(str(e))
-                st.info("Tip: Sheet ko Share → Anyone with the link → Viewer banao.")
+                st.info("Sheet ko Share → Anyone with the link → Viewer banao.")
+
+# ========== TAB 2: Excel Auto Split ==========
+with tab2:
+    st.subheader("Tickets Excel (Auto Split)")
+    tickets_file = st.file_uploader("Upload Tickets Excel", type=['xlsx', 'xls', 'csv'], key="tickets_upload")
+    if tickets_file is not None:
+        try:
+            if tickets_file.name.lower().endswith('.csv'):
+                df = pd.read_csv(tickets_file)
+            else:
+                df = pd.read_excel(tickets_file, engine='openpyxl')
+            df.columns = [str(c).strip() for c in df.columns]
+            processed = process_closed_tickets(df)
+            if 'status' in processed.columns:
+                status_str = processed['status'].astype(str).str.lower()
+                open_mask = (
+                    status_str.str.contains('assign to fe', na=False) |
+                    status_str.str.contains('call on hold', na=False) |
+                    status_str.str.contains('on hold', na=False)
+                )
+                open_part = processed[open_mask].copy()
+                closed_part = processed[~open_mask].copy()
+                if not open_part.empty:
+                    open_part = process_open_tickets(open_part)
+                st.session_state.closed_df = closed_part if not closed_part.empty else None
+                st.session_state.open_df = open_part if not open_part.empty else None
+                st.success(f"Closed: {len(closed_part)} | Open: {len(open_part)}")
+            else:
+                st.session_state.closed_df = processed
+                st.warning("No status column → all Closed")
+        except Exception as e:
+            st.error(f"Error: {e}")
+            st.exception(e)
 
 # ========== TAB 3: Open Optional ==========
 with tab3:
     st.subheader("Open Tickets Excel (Optional)")
-    open_file = st.file_uploader("Upload Open Tickets Excel", type=['xlsx', 'xls', 'csv'], key="open_upload")
+    open_file = st.file_uploader("Upload Open Tickets", type=['xlsx', 'xls', 'csv'], key="open_upload")
     if open_file is not None:
         try:
             if open_file.name.lower().endswith('.csv'):
@@ -185,17 +168,14 @@ with tab3:
                 df = pd.read_excel(open_file, engine='openpyxl')
             df.columns = [str(c).strip() for c in df.columns]
             processed = process_open_tickets(df)
-            if st.session_state.get('site_master') is not None:
-                processed = merge_with_site_master(processed, st.session_state.site_master)
             st.session_state.open_df = processed
-            st.success(f"✅ Open tickets: {len(processed)}")
-            st.dataframe(processed.head(8), use_container_width=True)
+            st.success(f"Open: {len(processed)}")
         except Exception as e:
             st.error(f"Error: {e}")
 
-# ========== TAB 4: Site Master Excel ==========
+# ========== TAB 4: Site Master ==========
 with tab4:
-    st.subheader("Site Master Excel")
+    st.subheader("Site Master")
     site_file = st.file_uploader("Upload Site Master", type=['xlsx', 'xls', 'csv'], key="site_upload")
     if site_file is not None:
         try:
@@ -206,8 +186,7 @@ with tab4:
             df.columns = [str(c).strip() for c in df.columns]
             processed = process_site_master(df)
             st.session_state.site_master = processed
-            st.success(f"✅ Site Master: {len(processed)}")
-            st.dataframe(processed.head(10), use_container_width=True)
+            st.success(f"Site Master: {len(processed)}")
         except Exception as e:
             st.error(f"Error: {e}")
 
