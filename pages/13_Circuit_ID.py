@@ -2,7 +2,9 @@ import streamlit as st
 import pandas as pd
 import sys
 import os
+import io
 
+# Project root add kar rahe hain taaki utils module read ho sake
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 
@@ -73,6 +75,13 @@ def isp_display(val):
         return 'ONEOTT / Celerity'
     return s if s and s.lower() not in ('nan', '--') else '—'
 
+# Helper function to generate Excel binary buffer
+def get_excel_download(dataframe: pd.DataFrame, sheet_name="Circuit_Data"):
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        dataframe.to_excel(writer, index=False, sheet_name=sheet_name)
+    return buffer.getvalue()
+
 st.markdown("""
 <div class="ckt-hero">
   <h1>🔌 Circuit ID Lookup</h1>
@@ -90,7 +99,7 @@ st.caption(f"Master loaded: **{len(master)}** sites")
 
 q = st.text_input(
     "Search Site Code or CKT ID",
-    placeholder="e.g. XTNSLN354   ya   ENT-BBXX-BWXX-HP-SOL-XX-XXX-HUGHES-0057081",
+    placeholder="e.g. XTNSLN354    ya    ENT-BBXX-BWXX-HP-SOL-XX-XXX-HUGHES-0057081",
 )
 
 matches = pd.DataFrame()
@@ -141,7 +150,7 @@ else:
                 st.markdown(f"**Phase:** {phase}")
             st.caption(addr)
 
-            # Extra quick copy row
+            # Quick download txt actions
             bc1, bc2, _ = st.columns([1, 1, 2])
             with bc1:
                 st.download_button(
@@ -163,10 +172,51 @@ else:
                 )
 
     show_cols = [c for c in ['site_code', 'ckt_id', 'isp', 'state', 'branch_name', 'bank_name', 'address', 'phase', 'delivery', 'acceptance'] if c in matches.columns]
+    
     st.markdown("#### Result table")
     st.dataframe(matches[show_cols], use_container_width=True, hide_index=True)
     st.caption("Table se bhi select karke Ctrl+C / long-press copy kar sakte ho.")
+    
+    # Export options for filtered results
+    exp_col1, exp_col2, _ = st.columns([1.5, 1.5, 3])
+    with exp_col1:
+        st.download_button(
+            label="📥 Download Results (CSV)",
+            data=matches[show_cols].to_csv(index=False).encode('utf-8'),
+            file_name=f"Circuit_SearchResults_{q}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+    with exp_col2:
+        st.download_button(
+            label="📊 Download Results (Excel)",
+            data=get_excel_download(matches[show_cols], sheet_name="Filtered_Circuits"),
+            file_name=f"Circuit_SearchResults_{q}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
 with st.expander("All sites (master)", expanded=False):
     cols = [c for c in ['site_code', 'ckt_id', 'isp', 'state', 'branch_name', 'bank_name', 'address'] if c in master.columns]
     st.dataframe(master[cols], use_container_width=True, height=360, hide_index=True)
+    
+    # Export options for master dataset
+    m_col1, m_col2, _ = st.columns([1.5, 1.5, 3])
+    with m_col1:
+        st.download_button(
+            label="📥 Export Master (CSV)",
+            data=master[cols].to_csv(index=False).encode('utf-8'),
+            file_name="Master_Circuit_List.csv",
+            mime="text/csv",
+            key="master_csv_download",
+            use_container_width=True
+        )
+    with m_col2:
+        st.download_button(
+            label="📊 Export Master (Excel)",
+            data=get_excel_download(master[cols], sheet_name="Master_Circuits"),
+            file_name="Master_Circuit_List.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="master_excel_download",
+            use_container_width=True
+        )
