@@ -1,85 +1,157 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import numpy as np
 import sys
 import os
 from io import BytesIO
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
-from utils.data_processing import filter_by_period, process_closed_tickets
+from utils.data_processing import process_closed_tickets
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 from utils.bootstrap import ensure_ready
 
 st.set_page_config(page_title="Partner Report | XTRNATE", page_icon="📑", layout="wide")
 
-st.title("📑 Partner Report — HCIN / ONEOTT")
-st.caption("Data sheet se • Unique Incident ID • Resolve = Resolved Time-Active only • Close Time ignore")
-
-ensure_ready()
-
 DATA_URL = "https://docs.google.com/spreadsheets/d/1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I/edit?usp=sharing"
 DATA_GID = 1980854633
 
-# Extra column mapping if present on source
-EXTRA_RENAME = {
-    'Problem Reported': 'problem_reported',
-    'Problem Related To': 'problem_related',
-    'Problem Classification': 'problem_class',
-    'Root Cause': 'root_cause',
-    'Last Enclosure Comment(Active)': 'reason',
-    'Incident ID': 'ticket_id',
-    'Request Title': 'site_code',
-    'Submitted Time': 'submitted_time',
-    'CurrentStatus': 'status',
-    'Current Status': 'status',
-    'Owner': 'owner',
-    'State': 'state',
-    'City': 'city',
-    'Resolved Time-Active': 'resolved_time',
-    'Down Time': 'down_time_min',
-}
+CLASS_ORDER = [
+    "Backend /Upstream issue/Node isolation at ISP end",
+    "Fibre Cut",
+    "Interface down/ Cable disconnected from SDWAN",
+    "Maintenance activity by ISP",
+    "No changes done",
+    "ONU/Media converter/ZTE modem is faulty",
+    "ONU/Media converter/ZTE modem Rebooted",
+    "Others",
+    "Power outage at ISP Node",
+    "Problem in LAN connectivity.",
+]
 
-def classify_issue(row):
+SLA_ORDER = ["<2 Hours", "2-4 Hours", "4-8 Hours", "8-12 Hours", "More than 24 Hours"]
+
+UPTIME_ORDER = [
+    "Between 80% to 75%",
+    "Between 85% to 80%",
+    "Between 90% to 85%",
+    "Between 93% to 90%",
+    "Between 96% to 93%",
+    "Between 98% to 96%",
+    "Greater than 98%",
+]
+
+def classify_problem(row):
+    parts = []
     for col in ['problem_class', 'root_cause', 'reason', 'problem_related', 'problem_reported']:
-        val = str(row.get(col, '') or '').lower()
-        if val in ('', 'nan', '--', 'none'):
-            continue
-        if 'fibre cut' in val or 'fiber cut' in val:
-            return 'Fibre Cut'
-        if 'backend' in val or 'upstream' in val or 'node isolation' in val:
-            return 'Backend / Upstream / Node Isolation'
-        if 'force maj' in val or 'natural calamity' in val or 'landslide' in val or 'rain' in val:
-            return 'Force Majeure / Natural Calamity'
-        if 'onu' in val or 'modem' in val or 'media converter' in val or 'zte' in val:
-            return 'ONU / Modem / Media Converter'
-        if 'housekeep' in val:
-            return 'Housekeeping'
-        if 'third party' in val or 'vendor' in val:
-            return 'Third Party'
-        if 'nff' in val or 'no issue' in val or 'no changes' in val:
-            return 'NFF / No Issue'
-        if 'power' in val:
-            return 'Power Issue'
-        if 'sdwan' in val or 'interface down' in val or 'cable disconnect' in val:
-            return 'Interface / Cable / SDWAN'
-        if 'customer' in val or 'lan' in val:
-            return 'Customer End'
-    return 'Others'
+        v = str(row.get(col, '') or '')
+        if v and v.lower() not in ('nan', '--', 'none', ''):
+            parts.append(v)
+    text = " ".join(parts).lower()
 
-with st.expander("☁️ Reload from DATA sheet (gid 1980854633)"):
-    if st.button("Reload DATA tab now", type="primary"):
+    raw = str(row.get('problem_class', '') or '').strip()
+    if raw and raw.lower() not in ('nan', '--', 'none'):
+        # keep source label if it already matches known classes
+        for c in CLASS_ORDER:
+            if c.lower() in raw.lower() or raw.lower() in c.lower():
+                return c
+
+    if 'no changes done' in text:
+        return "No changes done"
+    if 'maintenance' in text:
+        return "Maintenance activity by ISP"
+    if ('interface down' in text) or ('sdwan' in text) or ('cable disconnect' in text):
+        return "Interface down/ Cable disconnected from SDWAN"
+    if ('lan connectivity' in text) or ('lan-cable' in text) or ('loose lan' in text):
+        return "Problem in LAN connectivity."
+    if ('rebooted' in text) or ('reboot' in text and ('onu' in text or 'modem' in text)):
+        return "ONU/Media converter/ZTE modem Rebooted"
+    if ('onu' in text or 'modem' in text or 'media converter' in text or 'zte' in text) and (
+        'fault' in text or 'hang' in text or 'replace' in text or 'faulty' in text
+    ):
+        return "ONU/Media converter/ZTE modem is faulty"
+    if 'fibre cut' in text or 'fiber cut' in text:
+        return "Fibre Cut"
+    if 'backend' in text or 'upstream' in text or 'node isolation' in text:
+        return "Backend /Upstream issue/Node isolation at ISP end"
+    if 'power outage' in text or 'pop end power' in text or 'power issue' in text:
+        return "Power outage at ISP Node"
+    if 'nff' in text or 'no issue' in text:
+        return "Others"
+    return "Others"
+
+def sla_bucket(hrs):
+    if pd.isna(hrs) or hrs < 0:
+        return None
+    if hrs < 2:
+        return "<2 Hours"
+    if hrs < 4:
+        return "2-4 Hours"
+    if hrs < 8:
+        return "4-8 Hours"
+    if hrs < 12:
+        return "8-12 Hours"
+    return "More than 24 Hours"
+
+def uptime_bucket(pct):
+    if pd.isna(pct):
+        return None
+    if pct > 98:
+        return "Greater than 98%"
+    if pct > 96:
+        return "Between 98% to 96%"
+    if pct > 93:
+        return "Between 96% to 93%"
+    if pct > 90:
+        return "Between 93% to 90%"
+    if pct > 85:
+        return "Between 90% to 85%"
+    if pct > 80:
+        return "Between 85% to 80%"
+    return "Between 80% to 75%"
+
+def style_blue(df):
+    def apply(row):
+        if str(row.iloc[0]).strip().lower() == 'grand total':
+            return ['background-color:#00AEEF;color:#fff;font-weight:800;text-align:center'] * len(row)
+        return ['background-color:#F8FAFC;color:#0F172A;text-align:center'] * len(row)
+    return df.style.apply(apply, axis=1).set_table_styles([
+        {'selector': 'th', 'props': [('background-color', '#00AEEF'), ('color', '#fff'),
+                                     ('font-weight', '800'), ('text-align', 'center'), ('padding', '8px')]},
+        {'selector': 'td', 'props': [('border', '1px solid #CBD5E1'), ('padding', '6px')]},
+    ])
+
+def style_navy(df):
+    def apply(row):
+        if str(row.iloc[0]).strip().lower() == 'grand total':
+            return ['background-color:#DBEAFE;color:#1E3A8A;font-weight:800;text-align:center'] * len(row)
+        return ['text-align:center'] * len(row)
+    return df.style.apply(apply, axis=1).set_table_styles([
+        {'selector': 'th', 'props': [('background-color', '#2563EB'), ('color', '#fff'),
+                                     ('font-weight', '800'), ('text-align', 'center'), ('padding', '8px')]},
+        {'selector': 'td', 'props': [('border', '1px solid #CBD5E1'), ('padding', '6px')]},
+    ])
+
+st.title("📑 Partner Performance Report")
+st.caption("Format: SLA hours + Problem Classification + Uptime bands + Repeat calls  •  Source: Xtranet overall data")
+
+ensure_ready()
+
+with st.expander("Reload from Xtranet overall data"):
+    if st.button("Reload DATA tab", type="primary"):
         try:
             sid = extract_sheet_id(DATA_URL)
             raw = load_sheet_as_csv(sid, gid=DATA_GID)
             processed = process_closed_tickets(raw)
+            # keep extra source columns
+            for col in raw.columns:
+                key = str(col).strip()
+                if key not in processed.columns:
+                    processed[key] = raw[col]
             if 'ticket_id' in processed.columns:
                 processed = processed.drop_duplicates(subset=['ticket_id'], keep='first')
-            # attach extra cols if process dropped them
-            for src, dst in EXTRA_RENAME.items():
-                if src in raw.columns and dst not in processed.columns:
-                    processed[dst] = raw[src]
             st.session_state.raw_tickets_df = processed
             st.session_state.closed_df = processed
             st.success(f"Loaded {len(processed)} unique incidents")
@@ -88,148 +160,215 @@ with st.expander("☁️ Reload from DATA sheet (gid 1980854633)"):
             st.error(str(e))
 
 df = st.session_state.get('raw_tickets_df')
-if df is None or (hasattr(df, 'empty') and df.empty):
-    df = st.session_state.get('closed_df')
-
 if df is None or df.empty:
-    st.warning("Data nahi mila. Home pe auto-load wait karo ya upar Reload dabao.")
+    df = st.session_state.get('closed_df')
+if df is None or df.empty:
+    st.warning("Data nahi mila. Reload dabao.")
     st.stop()
 
 work = df.copy()
 if 'ticket_id' in work.columns:
     work = work.drop_duplicates(subset=['ticket_id'], keep='first')
 
-# Extra fields from original names if still present
-for src, dst in EXTRA_RENAME.items():
-    if src in work.columns and dst not in work.columns:
-        work[dst] = work[src]
+# map extra names
+rename_extra = {
+    'Problem Classification': 'problem_class',
+    'Problem Related To': 'problem_related',
+    'Problem Reported': 'problem_reported',
+    'Root Cause': 'root_cause',
+}
+for a, b in rename_extra.items():
+    if a in work.columns and b not in work.columns:
+        work[b] = work[a]
 
-work['issue_type'] = work.apply(classify_issue, axis=1)
+# resolved hours from Submitted -> Resolved Time-Active only
+if 'submitted_time' in work.columns and 'resolved_time' in work.columns:
+    work = work.dropna(subset=['submitted_time', 'resolved_time'])
+    work['resolution_hours'] = (work['resolved_time'] - work['submitted_time']).dt.total_seconds() / 3600.0
+    work = work[work['resolution_hours'] >= 0]
+    work['month_key'] = work['resolved_time'].dt.to_period('M')
+    work['month_label'] = work['resolved_time'].dt.strftime('%b-%y')
+else:
+    st.error("submitted_time / resolved_time missing")
+    st.stop()
 
-period = st.radio("Period", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "Overall"], horizontal=True)
-pmap = {"Last 1 Month": "1M", "Last 3 Months": "3M", "Last 6 Months": "6M", "Overall": "ALL"}
-if pmap[period] != "ALL" and 'submitted_time' in work.columns:
-    work = filter_by_period(work, pmap[period])
+work['sla_band'] = work['resolution_hours'].apply(sla_bucket)
+work['issue_type'] = work.apply(classify_problem, axis=1)
 
 def isp_of(val):
     s = str(val or '').upper()
     if 'HCIN' in s:
         return 'HCIN'
-    if 'ONEOTT' in s or 'OTT' in s or 'CELERITY' in s:
+    if any(x in s for x in ['ONEOTT', 'OTT', 'CELERITY']):
         return 'ONEOTT'
     return 'OTHER'
 
 if 'isp' not in work.columns:
-    work['isp'] = work.get('owner', pd.Series([''] * len(work))).apply(isp_of)
+    work['isp'] = work.get('owner', '').apply(isp_of)
+else:
+    work['isp'] = work['isp'].fillna('').astype(str)
+    work.loc[work['isp'].isin(['', 'OTHER', 'nan']), 'isp'] = work.loc[work['isp'].isin(['', 'OTHER', 'nan']), 'owner'].apply(isp_of)
 
-# Only resolved/closed for closed-report; keep all with status filter
-status_opt = st.multiselect(
-    "Status filter",
-    options=sorted(work['status'].dropna().astype(str).unique().tolist()) if 'status' in work.columns else [],
-    default=None,
-)
-if status_opt and 'status' in work.columns:
-    work = work[work['status'].astype(str).isin(status_opt)]
+# only closed/resolved for this performance report
+if 'status' in work.columns:
+    sl = work['status'].astype(str).str.lower()
+    closed_mask = sl.str.contains('resolv|close', na=False)
+    if closed_mask.any():
+        work = work[closed_mask].copy()
 
-hcin = work[work['isp'] == 'HCIN'].copy() if 'isp' in work.columns else pd.DataFrame()
-ott = work[work['isp'] == 'ONEOTT'].copy() if 'isp' in work.columns else pd.DataFrame()
+partner = st.radio("Report for", ["HCIN", "ONEOTT", "ALL"], horizontal=True)
+months_n = st.selectbox("Period (last N months + Overall option)",
+                        ["Last 1 Month", "Last 2 Months", "Last 3 Months", "Last 4 Months",
+                         "Last 5 Months", "Last 6 Months", "Last 7 Months", "Overall"],
+                        index=2)
 
-report_cols = [
-    'ticket_id', 'site_code', 'submitted_time', 'resolved_time', 'status',
-    'owner', 'isp', 'state', 'city', 'down_time_min', 'resolution_days',
-    'issue_type', 'root_cause', 'problem_class', 'problem_related', 'problem_reported',
-    'reason'
-]
+if partner != "ALL":
+    work = work[work['isp'] == partner].copy()
 
-def kpi_block(d, title):
-    st.markdown(f"### {title}")
-    t = len(d)
-    resolved = 0
-    if 'status' in d.columns:
-        sl = d['status'].astype(str).str.lower()
-        resolved = int(sl.str.contains('resolv|close', na=False).sum())
-    dt_hrs = 0
-    if 'down_time_min' in d.columns:
-        dt_hrs = round(pd.to_numeric(d['down_time_min'], errors='coerce').fillna(0).sum() / 60, 1)
-    avg_d = 0
-    if 'resolution_days' in d.columns and d['resolution_days'].notna().any():
-        avg_d = round(pd.to_numeric(d['resolution_days'], errors='coerce').mean(), 1)
-    a, b, c, dlt = st.columns(4)
-    a.metric("Unique Tickets", t)
-    b.metric("Resolved / Closed", resolved)
-    c.metric("Total Downtime Hrs", dt_hrs)
-    dlt.metric("Avg Resolution Days", avg_d)
+# month window from latest resolved date
+max_dt = work['resolved_time'].max()
+if pd.isna(max_dt):
+    st.info("No resolved tickets")
+    st.stop()
 
-def charts(d, color):
-    c1, c2 = st.columns(2)
-    with c1:
-        if 'issue_type' in d.columns and not d.empty:
-            g = d['issue_type'].value_counts().reset_index()
-            g.columns = ['Issue Type', 'Count']
-            fig = px.bar(g, x='Issue Type', y='Count', color='Count', color_continuous_scale=color, text='Count')
-            fig.update_layout(template='plotly_dark', height=340, xaxis_tickangle=-25)
-            st.plotly_chart(fig, use_container_width=True)
-    with c2:
-        if 'state' in d.columns and not d.empty:
-            g = d['state'].value_counts().head(10).reset_index()
-            g.columns = ['State', 'Count']
-            fig = px.bar(g, x='State', y='Count', color='Count', color_continuous_scale=color, text='Count')
-            fig.update_layout(template='plotly_dark', height=340, xaxis_tickangle=-25)
-            st.plotly_chart(fig, use_container_width=True)
+if months_n == "Overall":
+    selected = work.copy()
+else:
+    n = int(months_n.split()[1])
+    start = (max_dt.to_period('M') - (n - 1)).to_timestamp()
+    selected = work[work['resolved_time'] >= start].copy()
 
-def table(d):
-    cols = [c for c in report_cols if c in d.columns]
-    show = d[cols].copy()
-    if 'submitted_time' in show.columns:
-        show = show.sort_values('submitted_time', ascending=False)
-    st.dataframe(show, use_container_width=True, height=420)
-    return show
+if selected.empty:
+    st.warning("Is period / partner pe resolved data nahi hai.")
+    st.stop()
 
-def to_xlsx(frames: dict):
+# month columns in chronological order
+month_periods = sorted(selected['month_key'].dropna().unique().tolist())
+month_labels = [pd.Period(p, freq='M').strftime('%b-%y') for p in month_periods]
+
+# ========== TABLE 1: SLA buckets x Month ==========
+sla_rows = []
+for band in SLA_ORDER:
+    row = {"Row Labels": band}
+    total = 0
+    for p, lab in zip(month_periods, month_labels):
+        cnt = int(((selected['month_key'] == p) & (selected['sla_band'] == band)).sum())
+        row[lab] = cnt
+        total += cnt
+    row["Grand Total"] = total
+    sla_rows.append(row)
+
+gt = {"Row Labels": "Grand Total"}
+for lab in month_labels:
+    gt[lab] = int(sum(r[lab] for r in sla_rows))
+gt["Grand Total"] = int(sum(r["Grand Total"] for r in sla_rows))
+sla_rows.append(gt)
+sla_df = pd.DataFrame(sla_rows)
+
+# ========== TABLE 2: Problem Classification + Avg Hrs ==========
+cls_rows = []
+for cls in CLASS_ORDER:
+    row = {"Problem Classification Terrestrial Calls": cls}
+    for p, lab in zip(month_periods, month_labels):
+        part = selected[(selected['month_key'] == p) & (selected['issue_type'] == cls)]
+        row[lab] = int(len(part))
+        avg = part['resolution_hours'].mean() if len(part) else np.nan
+        row[f"Average Resolution (in Hrs) -{lab}"] = round(avg, 2) if pd.notna(avg) else ""
+    cls_rows.append(row)
+
+# grand total classification
+gt2 = {"Problem Classification Terrestrial Calls": "Grand Total"}
+for lab in month_labels:
+    gt2[lab] = int(sum(r[lab] for r in cls_rows))
+    gt2[f"Average Resolution (in Hrs) -{lab}"] = ""
+cls_rows.append(gt2)
+cls_df = pd.DataFrame(cls_rows)
+
+# ========== TABLE 3: Uptime bands ==========
+# period hours = days in selected window * 24
+min_t = selected['resolved_time'].min()
+max_t = selected['resolved_time'].max()
+period_hours = max((max_t - min_t).total_seconds() / 3600.0, 24.0)
+# better: calendar span of selected months
+span_start = pd.Period(month_periods[0], freq='M').to_timestamp()
+span_end = (pd.Period(month_periods[-1], freq='M') + 1).to_timestamp()
+period_hours = max((span_end - span_start).total_seconds() / 3600.0, 24.0)
+
+if 'down_time_min' in selected.columns:
+    selected['down_hrs'] = pd.to_numeric(selected['down_time_min'], errors='coerce').fillna(0) / 60.0
+else:
+    selected['down_hrs'] = selected['resolution_hours']
+
+site_up = selected.groupby('site_code', dropna=True).agg(down_hrs=('down_hrs', 'sum'), tickets=('ticket_id', 'count')).reset_index()
+site_up['uptime_pct'] = (1 - (site_up['down_hrs'] / period_hours)).clip(0, 1) * 100
+site_up['band'] = site_up['uptime_pct'].apply(uptime_band if False else uptime_bucket)
+
+up_rows = []
+for b in UPTIME_ORDER:
+    up_rows.append({
+        "UPTIME IN PERIOD": b,
+        "Count of Sites": int((site_up['band'] == b).sum()),
+        "Count of Tickets": int(site_up.loc[site_up['band'] == b, 'tickets'].sum()),
+    })
+up_rows.append({
+    "UPTIME IN PERIOD": "Grand Total",
+    "Count of Sites": int(len(site_up)),
+    "Count of Tickets": int(site_up['tickets'].sum()),
+})
+up_df = pd.DataFrame(up_rows)
+
+# ========== TABLE 4: Repeat per month ==========
+repeat_idx = ["SINGLE TIME CALL LOG", "2 TIMES CALL LOG", "3 TIME CALL LOG", "4 Time Repeat", "5+ Time Repeat"]
+rep_row_map = {1: "SINGLE TIME CALL LOG", 2: "2 TIMES CALL LOG", 3: "3 TIME CALL LOG", 4: "4 Time Repeat"}
+
+rep = {"REPEAT TIME": repeat_idx}
+for p, lab in zip(month_periods, month_labels):
+    mdf = selected[selected['month_key'] == p]
+    vc = mdf.groupby('site_code').size() if 'site_code' in mdf.columns else pd.Series(dtype=int)
+    tt_vals, sc_vals = [], []
+    for nrep, label in [(1, "SINGLE TIME CALL LOG"), (2, "2 TIMES CALL LOG"), (3, "3 TIME CALL LOG"), (4, "4 Time Repeat")]:
+        sites = vc[vc == nrep]
+        sc_vals.append(int(len(sites)))
+        tt_vals.append(int(sites.sum()) if len(sites) else 0)
+    sites5 = vc[vc >= 5]
+    sc_vals.append(int(len(sites5)))
+    tt_vals.append(int(sites5.sum()) if len(sites5) else 0)
+    rep[f"{lab}-TT"] = tt_vals
+    rep[f"{lab}-SITE CODE"] = sc_vals
+rep_df = pd.DataFrame(rep)
+
+# ========== RENDER ==========
+st.markdown(f"### {partner}  •  {months_n}  •  Unique tickets: **{len(selected)}**")
+
+c1, c2 = st.columns(2)
+with c1:
+    st.markdown("#### Resolution Time Buckets")
+    st.dataframe(style_blue(sla_df), use_container_width=True, hide_index=True)
+    st.markdown("#### Uptime bands (site-wise in selected months)")
+    st.dataframe(style_blue(up_df), use_container_width=True, hide_index=True)
+
+with c2:
+    st.markdown("#### Problem Classification + Avg Resolution Hrs")
+    st.dataframe(style_navy(cls_df), use_container_width=True, hide_index=True)
+    st.markdown("#### Repeat Time (TT count vs unique Site Codes)")
+    st.dataframe(style_blue(rep_df), use_container_width=True, hide_index=True)
+
+def to_xlsx():
     out = BytesIO()
     with pd.ExcelWriter(out, engine='xlsxwriter') as writer:
-        for name, frame in frames.items():
-            if frame is not None and not frame.empty:
-                frame.to_excel(writer, index=False, sheet_name=name[:31])
+        sla_df.to_excel(writer, index=False, sheet_name='SLA_Buckets')
+        cls_df.to_excel(writer, index=False, sheet_name='Classification')
+        up_df.to_excel(writer, index=False, sheet_name='Uptime')
+        rep_df.to_excel(writer, index=False, sheet_name='Repeat')
+        cols = [c for c in ['ticket_id', 'site_code', 'submitted_time', 'resolved_time',
+                            'resolution_hours', 'issue_type', 'owner', 'isp', 'state', 'city',
+                            'down_time_min', 'reason', 'root_cause'] if c in selected.columns]
+        selected[cols].to_excel(writer, index=False, sheet_name='Ticket_Detail')
     return out.getvalue()
 
-tab_h, tab_o, tab_b = st.tabs(["🏢 HCIN Report", "🌐 ONEOTT Report", "📊 Combined"])
-
-with tab_h:
-    kpi_block(hcin, "HCIN")
-    charts(hcin, 'Blues')
-    st.markdown("#### HCIN ticket list (unique Incident ID)")
-    h_show = table(hcin) if not hcin.empty else pd.DataFrame()
-    if not hcin.empty:
-        st.download_button("📥 Download HCIN Report", data=to_xlsx({'HCIN': h_show}),
-                           file_name=f"HCIN_Partner_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                           key="dl_hcin_rep")
-
-with tab_o:
-    kpi_block(ott, "ONEOTT / CELERITY")
-    charts(ott, 'Oranges')
-    st.markdown("#### ONEOTT ticket list (unique Incident ID)")
-    o_show = table(ott) if not ott.empty else pd.DataFrame()
-    if not ott.empty:
-        st.download_button("📥 Download OTT Report", data=to_xlsx({'ONEOTT': o_show}),
-                           file_name=f"ONEOTT_Partner_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                           key="dl_ott_rep")
-
-with tab_b:
-    kpi_block(work, "ALL Partners")
-    both = pd.concat([
-        hcin.assign(_p='HCIN') if not hcin.empty else pd.DataFrame(),
-        ott.assign(_p='ONEOTT') if not ott.empty else pd.DataFrame()
-    ], ignore_index=True) if not hcin.empty or not ott.empty else pd.DataFrame()
-    if not both.empty:
-        cols = [c for c in ['_p'] + report_cols if c in both.columns]
-        st.dataframe(both[cols], use_container_width=True, height=400)
-        st.download_button("📥 Download Combined",
-                           data=to_xlsx({'HCIN': hcin, 'ONEOTT': ott, 'ALL': both}),
-                           file_name=f"Partner_Report_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                           key="dl_both_rep")
-
-st.info("Existing Dashboard / Monthly SLA / Penalty pages same hain. Yeh **naya alag section** hai.")
+st.download_button(
+    f"📥 Download {partner} Report Excel",
+    data=to_xlsx(),
+    file_name=f"XTRNATE_{partner}_{months_n.replace(' ', '_')}_Report.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+)
