@@ -8,17 +8,25 @@ from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import filter_by_period
+from utils.auto_load import auto_load_tickets
 
 st.set_page_config(page_title="Penalty & SLA | XTRNATE", page_icon="📜", layout="wide")
 
-st.title("📜 Automated Penalty — HCIN vs ONEOTT (Alag-alag)")
-st.markdown("Dono vendors ka penalty **separate** calculate hota hai")
+st.title("📜 Automated Penalty — HCIN vs ONEOTT")
+st.markdown("Period-wise SLA breach + **Site-wise down count & total downtime** (dono ISP alag)")
+
+if st.session_state.get('closed_df') is None:
+    with st.spinner("Auto-loading data..."):
+        auto_load_tickets()
+
+if 'selected_isp' not in st.session_state:
+    st.session_state.selected_isp = "ALL"
 
 closed_df = st.session_state.get('closed_df')
 open_df = st.session_state.get('open_df')
 
 if closed_df is None or closed_df.empty:
-    st.warning("Closed data load karo (Google Sheet / Excel).")
+    st.warning("Closed data nahi mila. Sheet share check karo.")
     st.stop()
 
 period = st.radio("Period", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "Overall"], horizontal=True)
@@ -36,7 +44,7 @@ if 'penalty_rules' not in st.session_state:
         'l3_hours': 120, 'l3_penalty': 5000,
     }
 
-with st.expander("⚙️ Penalty Rules (dono vendors pe same apply)"):
+with st.expander("⚙️ Penalty Rules"):
     r = st.session_state.penalty_rules
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -75,17 +83,40 @@ def apply_penalty(df):
     return d
 
 def get_isp_slice(df, name):
-    if df is None or df.empty:
-        return pd.DataFrame()
-    if 'isp' not in df.columns:
+    if df is None or df.empty or 'isp' not in df.columns:
         return pd.DataFrame()
     return df[df['isp'] == name].copy()
 
-hcin_raw = get_isp_slice(df_all, 'HCIN')
-ott_raw = get_isp_slice(df_all, 'ONEOTT')
+def site_summary(d):
+    """Per site: count, avg hours, total downtime, penalty."""
+    if d is None or d.empty or 'site_code' not in d.columns:
+        return pd.DataFrame()
+    x = d.copy()
+    if 'down_time_min' not in x.columns:
+        x['down_time_min'] = x.get('resolution_hours', 0) * 60
+    x['down_time_min'] = pd.to_numeric(x['down_time_min'], errors='coerce').fillna(0)
+    x['resolution_hours'] = pd.to_numeric(x.get('resolution_hours', 0), errors='coerce').fillna(0)
+    x['penalty_est'] = pd.to_numeric(x.get('penalty_est', 0), errors='coerce').fillna(0)
 
-hcin = apply_penalty(hcin_raw)
-ott = apply_penalty(ott_raw)
+    g = x.groupby('site_code').agg(
+        down_count=('ticket_id', 'count'),
+        total_downtime_min=('down_time_min', 'sum'),
+        avg_resolution_hrs=('resolution_hours', 'mean'),
+        max_resolution_hrs=('resolution_hours', 'max'),
+        total_penalty_inr=('penalty_est', 'sum'),
+    ).reset_index()
+    g['total_downtime_hrs'] = (g['total_downtime_min'] / 60).round(1)
+    g['avg_resolution_hrs'] = g['avg_resolution_hrs'].round(1)
+    g['max_resolution_hrs'] = g['max_resolution_hrs'].round(1)
+    g['total_penalty_inr'] = g['total_penalty_inr'].astype(int)
+    g = g.sort_values(['down_count', 'total_downtime_hrs'], ascending=False)
+
+    if 'state' in x.columns:
+        g['state'] = g['site_code'].map(x.groupby('site_code')['state'].first())
+    return g
+
+hcin = apply_penalty(get_isp_slice(df_all, 'HCIN'))
+ott = apply_penalty(get_isp_slice(df_all, 'ONEOTT'))
 
 def summary_block(d):
     if d.empty:
@@ -103,145 +134,101 @@ def summary_block(d):
 h = summary_block(hcin)
 o = summary_block(ott)
 
-st.subheader("⚡ HCIN vs ONEOTT — Alag Penalty")
-
+st.subheader("⚡ HCIN vs ONEOTT Penalty")
 col_h, col_o = st.columns(2)
-
 with col_h:
     st.markdown("### 🏢 HCIN")
-    st.metric("Total Tickets", h['total'])
+    st.metric("Tickets", h['total'])
     a, b, c, d_ = st.columns(4)
-    a.metric("Within SLA", h['within'])
-    b.metric("L1", h['l1'])
-    c.metric("L2", h['l2'])
-    d_.metric("L3", h['l3'])
-    st.metric("HCIN Total Penalty ₹", f"{h['penalty']:,}")
-    st.caption(f"Breaches: {h['breaches']}")
-
+    a.metric("Within", h['within']); b.metric("L1", h['l1']); c.metric("L2", h['l2']); d_.metric("L3", h['l3'])
+    st.metric("Penalty ₹", f"{h['penalty']:,}")
 with col_o:
     st.markdown("### 🌐 ONEOTT")
-    st.metric("Total Tickets", o['total'])
+    st.metric("Tickets", o['total'])
     a, b, c, d_ = st.columns(4)
-    a.metric("Within SLA", o['within'])
-    b.metric("L1", o['l1'])
-    c.metric("L2", o['l2'])
-    d_.metric("L3", o['l3'])
-    st.metric("ONEOTT Total Penalty ₹", f"{o['penalty']:,}")
-    st.caption(f"Breaches: {o['breaches']}")
+    a.metric("Within", o['within']); b.metric("L1", o['l1']); c.metric("L2", o['l2']); d_.metric("L3", o['l3'])
+    st.metric("Penalty ₹", f"{o['penalty']:,}")
 
-st.markdown("#### Penalty Comparison")
-comp = pd.DataFrame({
-    'ISP': ['HCIN', 'ONEOTT'],
-    'Penalty_INR': [h['penalty'], o['penalty']]
-})
-fig = px.bar(comp, x='ISP', y='Penalty_INR', color='ISP',
-             color_discrete_map={'HCIN': '#38bdf8', 'ONEOTT': '#f97316'},
-             text='Penalty_INR', title="Total Estimated Penalty (₹)")
-fig.update_layout(template='plotly_dark', height=350)
+fig = px.bar(pd.DataFrame({'ISP': ['HCIN', 'ONEOTT'], 'Penalty_INR': [h['penalty'], o['penalty']]}),
+             x='ISP', y='Penalty_INR', color='ISP',
+             color_discrete_map={'HCIN': '#38bdf8', 'ONEOTT': '#f97316'}, text='Penalty_INR')
+fig.update_layout(template='plotly_dark', height=320)
 st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
+st.subheader(f"📍 Site-wise Down Count & Downtime — {period}")
+st.caption("Har site: kitni baar down | avg/max hours | total downtime | estimated penalty")
 
-tab1, tab2, tab3 = st.tabs(["🏢 HCIN Breaches", "🌐 ONEOTT Breaches", "📋 Summary Table"])
+tab_h, tab_o, tab_all = st.tabs(["🏢 HCIN Sites", "🌐 ONEOTT Sites", "📋 Combined"])
 
-show_cols = ['ticket_id', 'site_code', 'submitted_time', 'resolved_time', 'resolution_hours',
-             'sla_status', 'penalty_est', 'state', 'city', 'reason_clean', 'owner']
+h_sites = site_summary(hcin)
+o_sites = site_summary(ott)
 
-with tab1:
-    if hcin.empty:
-        st.info("HCIN data nahi")
+with tab_h:
+    if h_sites.empty:
+        st.info("HCIN site data nahi")
     else:
-        hb = hcin[hcin['penalty_est'] > 0].sort_values('resolution_hours', ascending=False)
-        if hb.empty:
-            st.success("HCIN — koi penalty breach nahi")
-        else:
-            cols = [c for c in show_cols if c in hb.columns]
-            st.dataframe(hb[cols], use_container_width=True, height=400)
-            st.download_button(
-                "📥 HCIN Penalty List",
-                data=hb[cols].to_csv(index=False).encode('utf-8'),
-                file_name=f"Penalty_HCIN_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                key="dl_hcin"
-            )
+        st.metric("Unique sites (HCIN)", len(h_sites))
+        st.dataframe(h_sites, use_container_width=True, height=420)
+        st.download_button("📥 HCIN Site Summary", h_sites.to_csv(index=False).encode('utf-8'),
+                           file_name=f"Penalty_Sites_HCIN_{period.replace(' ','_')}.csv", mime="text/csv", key="h_sites_dl")
 
-with tab2:
-    if ott.empty:
-        st.info("ONEOTT data nahi")
+with tab_o:
+    if o_sites.empty:
+        st.info("ONEOTT site data nahi")
     else:
-        ob = ott[ott['penalty_est'] > 0].sort_values('resolution_hours', ascending=False)
-        if ob.empty:
-            st.success("ONEOTT — koi penalty breach nahi")
-        else:
-            cols = [c for c in show_cols if c in ob.columns]
-            st.dataframe(ob[cols], use_container_width=True, height=400)
-            st.download_button(
-                "📥 ONEOTT Penalty List",
-                data=ob[cols].to_csv(index=False).encode('utf-8'),
-                file_name=f"Penalty_ONEOTT_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                key="dl_ott"
-            )
+        st.metric("Unique sites (ONEOTT)", len(o_sites))
+        st.dataframe(o_sites, use_container_width=True, height=420)
+        st.download_button("📥 ONEOTT Site Summary", o_sites.to_csv(index=False).encode('utf-8'),
+                           file_name=f"Penalty_Sites_OTT_{period.replace(' ','_')}.csv", mime="text/csv", key="o_sites_dl")
 
-with tab3:
-    summary = pd.DataFrame({
-        'Metric': ['Total Tickets', 'Within SLA', 'L1 Breach', 'L2 Breach', 'L3 Critical',
-                   'Total Breaches', 'Estimated Penalty (₹)'],
-        'HCIN': [h['total'], h['within'], h['l1'], h['l2'], h['l3'], h['breaches'], h['penalty']],
-        'ONEOTT': [o['total'], o['within'], o['l1'], o['l2'], o['l3'], o['breaches'], o['penalty']],
-    })
-    st.dataframe(summary, use_container_width=True)
+with tab_all:
+    if not h_sites.empty:
+        h_sites = h_sites.copy(); h_sites.insert(0, 'ISP', 'HCIN')
+    if not o_sites.empty:
+        o_sites2 = o_sites.copy(); o_sites2.insert(0, 'ISP', 'ONEOTT')
+    else:
+        o_sites2 = o_sites
+    combined = pd.concat([h_sites, o_sites2], ignore_index=True) if not h_sites.empty or not o_sites2.empty else pd.DataFrame()
+    if combined.empty:
+        st.info("No data")
+    else:
+        st.dataframe(combined, use_container_width=True, height=420)
 
-    def to_excel():
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            summary.to_excel(writer, index=False, sheet_name='Summary')
-            if not hcin.empty and (hcin['penalty_est'] > 0).any():
-                hcin[hcin['penalty_est'] > 0].to_excel(writer, index=False, sheet_name='HCIN_Breaches')
-            if not ott.empty and (ott['penalty_est'] > 0).any():
-                ott[ott['penalty_est'] > 0].to_excel(writer, index=False, sheet_name='ONEOTT_Breaches')
-        return output.getvalue()
+        def to_excel():
+            out = BytesIO()
+            with pd.ExcelWriter(out, engine='xlsxwriter') as writer:
+                if not h_sites.empty:
+                    h_sites.to_excel(writer, index=False, sheet_name='HCIN_Sites')
+                if not o_sites.empty:
+                    o_sites.to_excel(writer, index=False, sheet_name='ONEOTT_Sites')
+                combined.to_excel(writer, index=False, sheet_name='Combined')
+            return out.getvalue()
 
-    st.download_button(
-        "📥 Download Both ISPs Penalty Report",
-        data=to_excel(),
-        file_name=f"XTRNATE_Penalty_HCIN_ONEOTT_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+        st.download_button("📥 Download Site Downtime Report",
+                           data=to_excel(),
+                           file_name=f"XTRNATE_Site_Downtime_{period.replace(' ','_')}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 st.markdown("---")
-st.subheader("📞 Open Tickets — Projected Penalty (Alag)")
-if open_df is not None and not open_df.empty and 'open_hours' in open_df.columns:
-    def proj(d):
-        if d is None or d.empty:
-            return 0, 0
-        x = d.copy()
-        def calc(hours):
-            if pd.isna(hours):
-                return 0
-            if hours > rules['l3_hours']:
-                return rules['l3_penalty']
-            if hours > rules['l2_hours']:
-                return rules['l2_penalty']
-            if hours > rules['l1_hours']:
-                return rules['l1_penalty']
-            return 0
-        x['proj'] = x['open_hours'].apply(calc)
-        return int((x['proj'] > 0).sum()), int(x['proj'].sum())
+tab1, tab2 = st.tabs(["HCIN Breach Tickets", "ONEOTT Breach Tickets"])
+show_cols = ['ticket_id', 'site_code', 'submitted_time', 'resolved_time', 'resolution_hours',
+             'sla_status', 'penalty_est', 'state', 'reason_clean', 'owner']
 
-    hcin_o = get_isp_slice(open_df, 'HCIN')
-    ott_o = get_isp_slice(open_df, 'ONEOTT')
-    hb_c, hb_p = proj(hcin_o)
-    ob_c, ob_p = proj(ott_o)
+with tab1:
+    if not hcin.empty:
+        hb = hcin[hcin['penalty_est'] > 0].sort_values('resolution_hours', ascending=False)
+        if hb.empty:
+            st.success("No HCIN breaches")
+        else:
+            cols = [c for c in show_cols if c in hb.columns]
+            st.dataframe(hb[cols], use_container_width=True, height=350)
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**HCIN Open**")
-        st.metric("Past SLA (open)", hb_c)
-        st.metric("Projected ₹", f"{hb_p:,}")
-    with c2:
-        st.markdown("**ONEOTT Open**")
-        st.metric("Past SLA (open)", ob_c)
-        st.metric("Projected ₹", f"{ob_p:,}")
-else:
-    st.info("Open data nahi")
+with tab2:
+    if not ott.empty:
+        ob = ott[ott['penalty_est'] > 0].sort_values('resolution_hours', ascending=False)
+        if ob.empty:
+            st.success("No ONEOTT breaches")
+        else:
+            cols = [c for c in show_cols if c in ob.columns]
+            st.dataframe(ob[cols], use_container_width=True, height=350)
