@@ -29,10 +29,9 @@ st.markdown("""
   border-radius: 16px;
   padding: 1.2rem 1.4rem;
   margin-top: 0.8rem;
+  margin-bottom: 1rem;
 }
-.ckt-label { color: #94a3b8; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; }
-.ckt-value { color: #f8fafc; font-size: 1.15rem; font-weight: 700; margin: 0.15rem 0 0.7rem 0; word-break: break-all; }
-.ckt-id { color: #38bdf8; font-size: 1.35rem; font-weight: 800; font-family: ui-monospace, monospace; }
+.ckt-label { color: #94a3b8; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 0.2rem; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -77,7 +76,7 @@ def isp_display(val):
 st.markdown("""
 <div class="ckt-hero">
   <h1>🔌 Circuit ID Lookup</h1>
-  <p>Site Code search → CKT ID + ISP + Area / Location &nbsp;•&nbsp; Master sheet alag (gid 886642043)</p>
+  <p>Site Code search → CKT ID + ISP + Area &nbsp;•&nbsp; Copy button se Site Code / CKT ID 1-click copy</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -92,7 +91,6 @@ st.caption(f"Master loaded: **{len(master)}** sites")
 q = st.text_input(
     "Search Site Code or CKT ID",
     placeholder="e.g. XTNSLN354   ya   ENT-BBXX-BWXX-HP-SOL-XX-XXX-HUGHES-0057081",
-    label_visibility="visible",
 )
 
 matches = pd.DataFrame()
@@ -103,46 +101,71 @@ if q and q.strip():
     m2 = master['site_code'].astype(str).str.upper().str.contains(key_u, na=False) if 'site_code' in master.columns else m1
     m3 = master['ckt_id'].astype(str).str.upper().str.contains(key_u, na=False) if 'ckt_id' in master.columns else m1
     matches = master[m1 | m2 | m3].copy()
-    # exact site first
     if 'site_code' in matches.columns:
         exact = matches[matches['site_code'] == key_u]
         rest = matches[matches['site_code'] != key_u]
         matches = pd.concat([exact, rest], ignore_index=True)
 
 if not q or not q.strip():
-    st.info("Upar bade box mein Site Code likho. Example: `XTNSLN354`")
+    st.info("Upar box mein Site Code likho. Example: `XTNSLN354`")
 elif matches.empty:
     st.warning(f"`{q}` ka Circuit ID nahi mila. Code check karo.")
 else:
-    for _, row in matches.head(15).iterrows():
-        site = row.get('site_code', '—')
-        ckt = row.get('ckt_id', '—')
+    for i, row in matches.head(15).iterrows():
+        site = str(row.get('site_code', '—') or '—')
+        ckt = str(row.get('ckt_id', '—') or '—')
         isp = isp_display(row.get('isp', ''))
-        state = row.get('state', '—')
-        branch = row.get('branch_name', '—')
-        bank = row.get('bank_name', '—')
-        addr = row.get('address', '—')
-        phase = row.get('phase', '—')
-        st.markdown(f"""
-        <div class="ckt-card">
-          <div class="ckt-label">Site Code</div>
-          <div class="ckt-value">{site}</div>
-          <div class="ckt-label">Circuit ID</div>
-          <div class="ckt-id">{ckt}</div>
-          <div class="ckt-label">ISP</div>
-          <div class="ckt-value">{isp}</div>
-          <div class="ckt-label">Area / Location</div>
-          <div class="ckt-value">{branch} &nbsp;•&nbsp; {state}</div>
-          <div class="ckt-label">Bank / Address</div>
-          <div class="ckt-value" style="font-weight:500;font-size:0.98rem">{bank}<br/>{addr}</div>
-          <div class="ckt-label">Phase</div>
-          <div class="ckt-value" style="font-weight:500">{phase}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        state = str(row.get('state', '—') or '—')
+        branch = str(row.get('branch_name', '—') or '—')
+        bank = str(row.get('bank_name', '—') or '—')
+        addr = str(row.get('address', '—') or '—')
+        phase = str(row.get('phase', '—') or '—')
+
+        with st.container(border=True):
+            st.markdown(f"**Result #{i+1 if isinstance(i, int) else ''}**")
+
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown('<div class="ckt-label">Site Code — copy</div>', unsafe_allow_html=True)
+                st.code(site, language=None)
+            with c2:
+                st.markdown('<div class="ckt-label">Circuit ID — copy</div>', unsafe_allow_html=True)
+                st.code(ckt, language=None)
+
+            a, b = st.columns(2)
+            with a:
+                st.markdown(f"**ISP:** {isp}")
+                st.markdown(f"**Area / Location:** {branch} • {state}")
+            with b:
+                st.markdown(f"**Bank:** {bank}")
+                st.markdown(f"**Phase:** {phase}")
+            st.caption(addr)
+
+            # Extra quick copy row
+            bc1, bc2, _ = st.columns([1, 1, 2])
+            with bc1:
+                st.download_button(
+                    "📋 Site Code txt",
+                    data=site,
+                    file_name=f"{site}_site.txt",
+                    mime="text/plain",
+                    key=f"dl_site_{i}_{site}",
+                    use_container_width=True,
+                )
+            with bc2:
+                st.download_button(
+                    "📋 CKT ID txt",
+                    data=ckt,
+                    file_name=f"{site}_ckt.txt",
+                    mime="text/plain",
+                    key=f"dl_ckt_{i}_{site}",
+                    use_container_width=True,
+                )
 
     show_cols = [c for c in ['site_code', 'ckt_id', 'isp', 'state', 'branch_name', 'bank_name', 'address', 'phase', 'delivery', 'acceptance'] if c in matches.columns]
     st.markdown("#### Result table")
     st.dataframe(matches[show_cols], use_container_width=True, hide_index=True)
+    st.caption("Table se bhi select karke Ctrl+C / long-press copy kar sakte ho.")
 
 with st.expander("All sites (master)", expanded=False):
     cols = [c for c in ['site_code', 'ckt_id', 'isp', 'state', 'branch_name', 'bank_name', 'address'] if c in master.columns]
