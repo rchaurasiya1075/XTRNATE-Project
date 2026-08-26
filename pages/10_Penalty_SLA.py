@@ -6,14 +6,54 @@ import os
 from io import BytesIO
 from datetime import datetime
 
+# Openpyxl for Professional Excel Formatting
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
+
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import filter_by_period
 from utils.auto_load import auto_load_tickets
 
 st.set_page_config(page_title="Penalty & SLA | XTRNATE", page_icon="📜", layout="wide")
 
-st.title("📜 Automated Penalty — HCIN vs ONEOTT")
-st.markdown("Period-wise SLA breach + **Site-wise down count & total downtime** (dono ISP alag)")
+# Exact CKT Page Custom CSS Theme
+st.markdown("""
+<style>
+@media (max-width: 768px) {
+  .block-container { padding: 0.6rem !important; }
+}
+
+.ckt-hero {
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 70%);
+  border: 1px solid #38bdf8;
+  border-radius: 18px;
+  padding: 1.4rem 1.6rem 1.1rem 1.6rem;
+  margin-bottom: 1.2rem;
+  box-shadow: 0 10px 30px rgba(15,23,42,0.35);
+}
+.ckt-hero h1 { color: #fff; margin: 0 0 0.25rem 0; font-size: 1.7rem; }
+.ckt-hero p { color: #cbd5e1; margin: 0; }
+
+.ckt-card {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 16px;
+  padding: 1.2rem 1.4rem;
+  margin-top: 0.8rem;
+  margin-bottom: 1rem;
+}
+.ckt-label { color: #94a3b8; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 0.2rem; }
+</style>
+""", unsafe_allow_html=True)
+
+# Hero Banner Integration
+st.markdown("""
+<div class="ckt-hero">
+  <h1>📜 Automated Penalty — HCIN vs ONEOTT</h1>
+  <p>Period-wise SLA breach &nbsp;•&nbsp; Site-wise down count & total downtime tracking</p>
+</div>
+""", unsafe_allow_html=True)
 
 if st.session_state.get('closed_df') is None:
     with st.spinner("Auto-loading data..."):
@@ -44,7 +84,7 @@ if 'penalty_rules' not in st.session_state:
         'l3_hours': 120, 'l3_penalty': 5000,
     }
 
-with st.expander("⚙️ Penalty Rules"):
+with st.expander("⚙️ Penalty Rules Configuration"):
     r = st.session_state.penalty_rules
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -134,20 +174,32 @@ def summary_block(d):
 h = summary_block(hcin)
 o = summary_block(ott)
 
-st.subheader("⚡ HCIN vs ONEOTT Penalty")
-col_h, col_o = st.columns(2)
-with col_h:
-    st.markdown("### 🏢 HCIN")
-    st.metric("Tickets", h['total'])
-    a, b, c, d_ = st.columns(4)
-    a.metric("Within", h['within']); b.metric("L1", h['l1']); c.metric("L2", h['l2']); d_.metric("L3", h['l3'])
-    st.metric("Penalty ₹", f"{h['penalty']:,}")
-with col_o:
-    st.markdown("### 🌐 ONEOTT")
-    st.metric("Tickets", o['total'])
-    a, b, c, d_ = st.columns(4)
-    a.metric("Within", o['within']); b.metric("L1", o['l1']); c.metric("L2", o['l2']); d_.metric("L3", o['l3'])
-    st.metric("Penalty ₹", f"{o['penalty']:,}")
+# Summary Cards formatted inside Dark Container Theme
+with st.container():
+    st.subheader("⚡ HCIN vs ONEOTT Penalty Summary")
+    col_h, col_o = st.columns(2)
+    with col_h:
+        st.markdown("""
+        <div class="ckt-card">
+          <div class="ckt-label">Vendor Overview</div>
+          <h3 style="color:#38bdf8; margin:0;">🏢 HCIN</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        st.metric("Total Tickets", h['total'])
+        a, b, c, d_ = st.columns(4)
+        a.metric("Within", h['within']); b.metric("L1", h['l1']); c.metric("L2", h['l2']); d_.metric("L3", h['l3'])
+        st.metric("Penalty ₹", f"{h['penalty']:,}")
+    with col_o:
+        st.markdown("""
+        <div class="ckt-card">
+          <div class="ckt-label">Vendor Overview</div>
+          <h3 style="color:#f97316; margin:0;">🌐 ONEOTT</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        st.metric("Total Tickets", o['total'])
+        a, b, c, d_ = st.columns(4)
+        a.metric("Within", o['within']); b.metric("L1", o['l1']); c.metric("L2", o['l2']); d_.metric("L3", o['l3'])
+        st.metric("Penalty ₹", f"{o['penalty']:,}")
 
 fig = px.bar(pd.DataFrame({'ISP': ['HCIN', 'ONEOTT'], 'Penalty_INR': [h['penalty'], o['penalty']]}),
              x='ISP', y='Penalty_INR', color='ISP',
@@ -159,10 +211,92 @@ st.markdown("---")
 st.subheader(f"📍 Site-wise Down Count & Downtime — {period}")
 st.caption("Har site: kitni baar down | avg/max hours | total downtime | estimated penalty")
 
-tab_h, tab_o, tab_all = st.tabs(["🏢 HCIN Sites", "🌐 ONEOTT Sites", "📋 Combined"])
+tab_h, tab_o, tab_all = st.tabs(["🏢 HCIN Sites", "🌐 ONEOTT Sites", "📋 Combined Data"])
 
 h_sites = site_summary(hcin)
 o_sites = site_summary(ott)
+
+# Styled Dark Excel Exporter Function
+def get_styled_excel_bytes(hcin_df, ott_df, combined_df):
+    out = BytesIO()
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active) # Remove default sheet
+
+    # Fonts & Styles matching UI Dark Theme
+    font_family = "Segoe UI"
+    header_font = Font(name=font_family, size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
+    
+    alt_row_fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+    data_font = Font(name=font_family, size=10, color="000000")
+    site_font = Font(name=font_family, size=10, bold=True, color="1E3A8A")
+    
+    thin_border = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='thin', color='CBD5E1')
+    )
+    align_center = Alignment(horizontal='center', vertical='center')
+    align_left = Alignment(horizontal='left', vertical='center')
+    align_right = Alignment(horizontal='right', vertical='center')
+
+    sheets_to_create = []
+    if not hcin_df.empty:
+        sheets_to_create.append(('HCIN_Sites', hcin_df))
+    if not ott_df.empty:
+        sheets_to_create.append(('ONEOTT_Sites', ott_df))
+    if not combined_df.empty:
+        sheets_to_create.append(('Combined_Sites', combined_df))
+
+    for sheet_name, df_data in sheets_to_create:
+        ws = wb.create_sheet(title=sheet_name)
+        
+        # Write Headers
+        headers = list(df_data.columns)
+        ws.append(headers)
+        
+        for col_num in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = align_center
+            cell.border = thin_border
+            ws.row_dimensions[1].height = 26
+
+        # Write Rows with Alternating Colors & Border Formatting
+        for row_idx, row in enumerate(df_data.itertuples(index=False), start=2):
+            ws.append(list(row))
+            ws.row_dimensions[row_idx].height = 20
+            is_alt = (row_idx % 2 == 0)
+            
+            for col_idx in range(1, len(headers) + 1):
+                cell = ws.cell(row=row_idx, column=col_idx)
+                cell.border = thin_border
+                cell.font = data_font
+                
+                if is_alt:
+                    cell.fill = alt_row_fill
+                
+                header_name = str(headers[col_idx - 1]).lower()
+                
+                # Highlight Site Code specifically
+                if 'site' in header_name:
+                    cell.font = site_font
+                    cell.alignment = align_center
+                elif any(k in header_name for k in ['hrs', 'min', 'count', 'penalty', 'inr']):
+                    cell.alignment = align_right
+                else:
+                    cell.alignment = align_left
+
+        # Auto-adjust Column Widths
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            col_letter = get_column_letter(col[0].column)
+            ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+
+    wb.save(out)
+    return out.getvalue()
 
 with tab_h:
     if h_sites.empty:
@@ -170,7 +304,7 @@ with tab_h:
     else:
         st.metric("Unique sites (HCIN)", len(h_sites))
         st.dataframe(h_sites, use_container_width=True, height=420)
-        st.download_button("📥 HCIN Site Summary", h_sites.to_csv(index=False).encode('utf-8'),
+        st.download_button("📥 Download HCIN Site Summary (CSV)", h_sites.to_csv(index=False).encode('utf-8'),
                            file_name=f"Penalty_Sites_HCIN_{period.replace(' ','_')}.csv", mime="text/csv", key="h_sites_dl")
 
 with tab_o:
@@ -179,36 +313,36 @@ with tab_o:
     else:
         st.metric("Unique sites (ONEOTT)", len(o_sites))
         st.dataframe(o_sites, use_container_width=True, height=420)
-        st.download_button("📥 ONEOTT Site Summary", o_sites.to_csv(index=False).encode('utf-8'),
+        st.download_button("📥 Download ONEOTT Site Summary (CSV)", o_sites.to_csv(index=False).encode('utf-8'),
                            file_name=f"Penalty_Sites_OTT_{period.replace(' ','_')}.csv", mime="text/csv", key="o_sites_dl")
 
 with tab_all:
     if not h_sites.empty:
-        h_sites = h_sites.copy(); h_sites.insert(0, 'ISP', 'HCIN')
-    if not o_sites.empty:
-        o_sites2 = o_sites.copy(); o_sites2.insert(0, 'ISP', 'ONEOTT')
+        h_sites_copy = h_sites.copy()
+        h_sites_copy.insert(0, 'ISP', 'HCIN')
     else:
-        o_sites2 = o_sites
-    combined = pd.concat([h_sites, o_sites2], ignore_index=True) if not h_sites.empty or not o_sites2.empty else pd.DataFrame()
+        h_sites_copy = pd.DataFrame()
+
+    if not o_sites.empty:
+        o_sites_copy = o_sites.copy()
+        o_sites_copy.insert(0, 'ISP', 'ONEOTT')
+    else:
+        o_sites_copy = pd.DataFrame()
+
+    combined = pd.concat([h_sites_copy, o_sites_copy], ignore_index=True) if not h_sites_copy.empty or not o_sites_copy.empty else pd.DataFrame()
+    
     if combined.empty:
-        st.info("No data")
+        st.info("No data available to display")
     else:
         st.dataframe(combined, use_container_width=True, height=420)
 
-        def to_excel():
-            out = BytesIO()
-            with pd.ExcelWriter(out, engine='xlsxwriter') as writer:
-                if not h_sites.empty:
-                    h_sites.to_excel(writer, index=False, sheet_name='HCIN_Sites')
-                if not o_sites.empty:
-                    o_sites.to_excel(writer, index=False, sheet_name='ONEOTT_Sites')
-                combined.to_excel(writer, index=False, sheet_name='Combined')
-            return out.getvalue()
-
-        st.download_button("📥 Download Site Downtime Report",
-                           data=to_excel(),
-                           file_name=f"XTRNATE_Site_Downtime_{period.replace(' ','_')}.xlsx",
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.download_button(
+            "📊 Download Colorful Formatted Excel Report",
+            data=get_styled_excel_bytes(h_sites, o_sites, combined),
+            file_name=f"XTRNATE_Formatted_Penalty_Report_{period.replace(' ','_')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
 st.markdown("---")
 tab1, tab2 = st.tabs(["HCIN Breach Tickets", "ONEOTT Breach Tickets"])
