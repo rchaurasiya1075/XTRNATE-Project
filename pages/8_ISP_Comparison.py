@@ -15,7 +15,7 @@ st.set_page_config(page_title="ISP Comparison | XTRNATE", page_icon="⚖️", la
 show_last_update()
 
 st.title("⚖️ ISP Report — HCIN / ONEOTT")
-st.caption("Date range • HCIN ya OTT • Last remark se category • Excel + PPT download")
+st.caption("Date range • HCIN ya OTT • Last remark se category • Repeat 3M/6M • Excel + PPT")
 ensure_ready()
 
 closed_df = st.session_state.get("closed_df")
@@ -71,31 +71,32 @@ start_ts = pd.Timestamp(start_day)
 end_ts = pd.Timestamp(end_day) + pd.Timedelta(days=1)
 period = work[work[time_col].notna() & (work[time_col] >= start_ts) & (work[time_col] < end_ts)].copy()
 
-if "isp" in period.columns:
-    view = period[period["isp"] == partner].copy()
-else:
-    view = period.copy()
+def filter_isp(df):
+    if df is None or df.empty:
+        return pd.DataFrame()
+    if "isp" in df.columns:
+        out = df[df["isp"] == partner].copy()
+        if not out.empty:
+            return out
+    if "owner" in df.columns:
+        own = df["owner"].astype(str).str.upper()
+        key = "HCIN|HICOM" if partner == "HCIN" else "ONEOTT|OTT|CELERITY"
+        return df[own.str.contains(key, na=False)].copy()
+    return df.copy()
 
-if view.empty and "owner" in period.columns:
-    own = period["owner"].astype(str).str.upper()
-    if partner == "HCIN":
-        view = period[own.str.contains("HCIN|HICOM", na=False)].copy()
-    else:
-        view = period[own.str.contains("ONEOTT|OTT|CELERITY", na=False)].copy()
+view = filter_isp(period)
+hist = filter_isp(work)
 
 open_view = pd.DataFrame()
 if open_df is not None and not open_df.empty:
-    ov = open_df.copy()
-    if "isp" in ov.columns:
-        open_view = ov[ov["isp"] == partner].copy()
-    elif "owner" in ov.columns:
-        own = ov["owner"].astype(str).str.upper()
-        key = "HCIN|HICOM" if partner == "HCIN" else "ONEOTT|OTT|CELERITY"
-        open_view = ov[own.str.contains(key, na=False)].copy()
+    open_view = filter_isp(open_df)
 
 st.markdown(
     f"### {partner} Report  •  {start_day.strftime('%d-%b-%Y')} se {end_day.strftime('%d-%b-%Y')}  ({date_on})"
 )
+
+rep_sum = pd.DataFrame()
+rep_detail = pd.DataFrame()
 
 if view.empty:
     st.info("Is date range / ISP pe closed ticket nahi mila.")
@@ -166,7 +167,99 @@ else:
         site = pd.DataFrame()
         st.info("site_code missing")
 
-    st.subheader("📋 Ticket-wise detail")
+    # ---------- REPEAT 3M / 6M ----------
+    st.subheader("🔁 Repeat sites — is period ke sites ka 3 month / 6 month history")
+    st.caption("Jo site is selected period mein down gayi, uska 3M aur 6M mein kitni baar down + har ticket ka reason aur downtime")
+
+    if "site_code" not in view.columns or hist.empty:
+        st.info("Repeat nikalne ke liye site_code / history nahi mili.")
+    else:
+        period_sites = view["site_code"].dropna().astype(str).str.upper().unique().tolist()
+        look_end = end_ts
+        look_3 = look_end - pd.DateOffset(months=3)
+        look_6 = look_end - pd.DateOffset(months=6)
+        hist2 = hist[hist["site_code"].astype(str).str.upper().isin(period_sites)].copy()
+        if time_col in hist2.columns:
+            h3 = hist2[(hist2[time_col] >= look_3) & (hist2[time_col] < look_end)]
+            h6 = hist2[(hist2[time_col] >= look_6) & (hist2[time_col] < look_end)]
+        else:
+            h3, h6 = hist2, hist2
+
+        def dt_hrs(row):
+            if "down_time_min" in row and pd.notna(row.get("down_time_min")):
+                try:
+                    return round(float(row["down_time_min"]) / 60.0, 2)
+                except Exception:
+                    pass
+            if pd.notna(row.get("submitted_time")) and pd.notna(row.get("resolved_time")):
+                try:
+                    return round((row["resolved_time"] - row["submitted_time"]).total_seconds() / 3600.0, 2)
+                except Exception:
+                    return None
+            return None
+
+        rows_sum = []
+        rows_det = []
+        for sc in period_sites:
+            s3 = h3[h3["site_code"].astype(str).str.upper() == sc]
+            s6 = h6[h6["site_code"].astype(str).str.upper() == sc]
+            s_now = view[view["site_code"].astype(str).str.upper() == sc]
+
+            def pack(sdf):
+                reasons = sdf["outage_class"].dropna().astype(str).tolist() if "outage_class" in sdf.columns else []
+                remarks = sdf["reason"].dropna().astype(str).str.slice(0, 80).tolist() if "reason" in sdf.columns else []
+                hrs = [dt_hrs(r) for _, r in sdf.iterrows()]
+                hrs = [x for x in hrs if x is not None]
+                return {
+                    "count": len(sdf),
+                    "reasons": " | ".join(sorted(set(reasons))) if reasons else "",
+                    "remarks": " | ".join(remarks[:6]),
+                    "total_hrs": round(sum(hrs), 2) if hrs else 0,
+                    "ticket_hrs": ", ".join(str(x) for x in hrs),
+                }
+
+            p3, p6, pn = pack(s3), pack(s6), pack(s_now)
+            rows_sum.append({
+                "Site Code": sc,
+                "State": s_now["state"].iloc[0] if "state" in s_now.columns and len(s_now) else "",
+                "This period downs": pn["count"],
+                "This period DT hrs": pn["total_hrs"],
+                "3M downs": p3["count"],
+                "3M total DT hrs": p3["total_hrs"],
+                "3M reasons": p3["reasons"],
+                "6M downs": p6["count"],
+                "6M total DT hrs": p6["total_hrs"],
+                "6M reasons": p6["reasons"],
+            })
+            src = s6 if not s6.empty else s3
+            for _, r in src.sort_values(time_col if time_col in src.columns else src.columns[0], ascending=False).iterrows():
+                rows_det.append({
+                    "Site Code": sc,
+                    "Incident ID": r.get("ticket_id", ""),
+                    "Submitted": r.get("submitted_time", ""),
+                    "Resolved": r.get("resolved_time", ""),
+                    "Category": r.get("outage_class", ""),
+                    "Last Remark": str(r.get("reason", "") or "")[:160],
+                    "Downtime Hrs": dt_hrs(r),
+                })
+
+        rep_sum = pd.DataFrame(rows_sum).sort_values("6M downs", ascending=False)
+        rep_detail = pd.DataFrame(rows_det)
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Sites in period", len(period_sites))
+        m2.metric("Sites with 2+ in 3M", int((rep_sum["3M downs"] >= 2).sum()) if not rep_sum.empty else 0)
+        m3.metric("Sites with 3+ in 6M", int((rep_sum["6M downs"] >= 3).sum()) if not rep_sum.empty else 0)
+        st.dataframe(rep_sum, use_container_width=True, height=380)
+
+        pick = st.selectbox("Site ka ticket-wise downtime / reason", ["—"] + list(rep_sum["Site Code"]))
+        if pick and pick != "—" and not rep_detail.empty:
+            one = rep_detail[rep_detail["Site Code"] == pick]
+            st.markdown(f"**{pick}** — har ticket ka downtime + reason")
+            st.dataframe(one, use_container_width=True, height=280)
+            if one["Downtime Hrs"].notna().any():
+                st.caption(f"Total downtime (listed tickets): **{round(one['Downtime Hrs'].fillna(0).sum(), 2)} hrs**")
+
+    st.subheader("📋 Ticket-wise detail (selected period)")
     show_cols = [c for c in [
         "ticket_id", "site_code", "state", "city", "submitted_time", "resolved_time",
         "status", "owner", "isp", "outage_class", "reason", "down_time_min"
@@ -186,6 +279,10 @@ else:
             stt.to_excel(w, index=False, sheet_name="State")
         if not site.empty:
             site.to_excel(w, index=False, sheet_name="Sites")
+        if not rep_sum.empty:
+            rep_sum.to_excel(w, index=False, sheet_name="Repeat_3M_6M")
+        if not rep_detail.empty:
+            rep_detail.to_excel(w, index=False, sheet_name="Repeat_Tickets")
         detail.to_excel(w, index=False, sheet_name="Tickets")
 
     meta = {
