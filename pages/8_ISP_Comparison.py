@@ -9,12 +9,13 @@ from io import BytesIO
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, show_last_update
 from utils.data_processing import detect_category, get_summary_stats
+from utils.isp_deck import build_isp_pptx
 
 st.set_page_config(page_title="ISP Comparison | XTRNATE", page_icon="⚖️", layout="wide")
 show_last_update()
 
 st.title("⚖️ ISP Report — HCIN / ONEOTT")
-st.caption("Date range select karo • HCIN ya OTT click • Last remark se category • Count + % + graph + site list")
+st.caption("Date range • HCIN ya OTT • Last remark se category • Excel + PPT download")
 ensure_ready()
 
 closed_df = st.session_state.get("closed_df")
@@ -34,7 +35,6 @@ if "submitted_time" in work.columns:
 if "resolved_time" in work.columns:
     work["resolved_time"] = pd.to_datetime(work["resolved_time"], errors="coerce")
 
-# Category ALWAYS from last remark / reason text
 remark_src = work["reason"] if "reason" in work.columns else pd.Series("", index=work.index)
 work["outage_class"] = remark_src.apply(detect_category)
 
@@ -43,7 +43,7 @@ partner = st.radio("ISP (sirf selected ka report)", ["HCIN", "ONEOTT"], horizont
 min_d = work["submitted_time"].min() if "submitted_time" in work.columns else pd.NaT
 max_d = work["submitted_time"].max() if "submitted_time" in work.columns else pd.NaT
 today = date.today()
-def_start = (today - timedelta(days=6))
+def_start = today - timedelta(days=6)
 def_end = today
 if pd.notna(min_d):
     def_start = max(min_d.date(), today - timedelta(days=30))
@@ -76,7 +76,6 @@ if "isp" in period.columns:
 else:
     view = period.copy()
 
-# Also include owner text match (Celerity / HICOM)
 if view.empty and "owner" in period.columns:
     own = period["owner"].astype(str).str.upper()
     if partner == "HCIN":
@@ -95,12 +94,15 @@ if open_df is not None and not open_df.empty:
         open_view = ov[own.str.contains(key, na=False)].copy()
 
 st.markdown(
-    f"### {partner} Report  •  {start_day.strftime('%d-%b-%Y')} se {end_day.strftime('%d-%b-%Y')}  "
-    f"({date_on})"
+    f"### {partner} Report  •  {start_day.strftime('%d-%b-%Y')} se {end_day.strftime('%d-%b-%Y')}  ({date_on})"
 )
 
 if view.empty:
     st.info("Is date range / ISP pe closed ticket nahi mila.")
+    site = pd.DataFrame()
+    stt = pd.DataFrame()
+    daily = pd.DataFrame()
+    cls = pd.DataFrame()
 else:
     stats = get_summary_stats(view)
     total = len(view)
@@ -111,7 +113,6 @@ else:
     k4.metric("Unique Sites", view["site_code"].nunique() if "site_code" in view.columns else 0)
     k5.metric("Open now", len(open_view))
 
-    # ---- Classification count + % ----
     st.subheader("📊 Classification of Outage (Last Remark se)")
     cls = view["outage_class"].fillna("Others").astype(str).value_counts().reset_index()
     cls.columns = ["Outage Category", "Count"]
@@ -131,7 +132,6 @@ else:
         fig.update_layout(template="plotly_dark", height=380)
         st.plotly_chart(fig, use_container_width=True)
 
-    # ---- Daily count ----
     st.subheader("📅 Daily ticket count")
     daily = view.set_index(time_col).resample("D").size().reset_index()
     daily.columns = ["Date", "Count"]
@@ -140,7 +140,6 @@ else:
     st.plotly_chart(fig, use_container_width=True)
     st.dataframe(daily, use_container_width=True, hide_index=True)
 
-    # ---- State ----
     if "state" in view.columns:
         st.subheader("🌍 State-wise count + %")
         stt = view["state"].fillna("Unknown").astype(str).value_counts().reset_index()
@@ -151,8 +150,9 @@ else:
         fig = px.bar(stt[stt["State"] != "TOTAL"], x="State", y="Count", text="Count", color="Count")
         fig.update_layout(template="plotly_dark", height=340, xaxis_tickangle=-30)
         st.plotly_chart(fig, use_container_width=True)
+    else:
+        stt = pd.DataFrame()
 
-    # ---- Site codes ----
     st.subheader("📍 Site codes (is period ke)")
     if "site_code" in view.columns:
         site = view.groupby("site_code").agg(
@@ -166,7 +166,6 @@ else:
         site = pd.DataFrame()
         st.info("site_code missing")
 
-    # ---- Ticket detail ----
     st.subheader("📋 Ticket-wise detail")
     show_cols = [c for c in [
         "ticket_id", "site_code", "state", "city", "submitted_time", "resolved_time",
@@ -183,17 +182,47 @@ else:
         }).to_excel(w, index=False, sheet_name="Cover")
         cls.to_excel(w, index=False, sheet_name="Outage_Class")
         daily.to_excel(w, index=False, sheet_name="Daily")
-        if "state" in view.columns:
+        if not stt.empty:
             stt.to_excel(w, index=False, sheet_name="State")
         if not site.empty:
             site.to_excel(w, index=False, sheet_name="Sites")
         detail.to_excel(w, index=False, sheet_name="Tickets")
-    st.download_button(
-        f"📥 Download {partner} report Excel",
-        data=buf.getvalue(),
-        file_name=f"XTRNATE_{partner}_{start_day}_to_{end_day}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
+
+    meta = {
+        "isp": partner,
+        "from": start_day.strftime("%d %b %Y"),
+        "to": end_day.strftime("%d %b %Y"),
+        "date_on": date_on,
+        "tickets": total,
+        "dt_hrs": stats.get("total_downtime_hrs", 0),
+        "avg_hrs": stats.get("avg_downtime_hrs", 0),
+        "sites": int(view["site_code"].nunique()) if "site_code" in view.columns else 0,
+        "open": len(open_view),
+    }
+    try:
+        ppt_bytes = build_isp_pptx(meta, cls, daily, stt, site)
+    except Exception as e:
+        ppt_bytes = None
+        st.warning(f"PPT build issue: {e}")
+
+    d1, d2 = st.columns(2)
+    with d1:
+        st.download_button(
+            f"📥 Excel — {partner} full data",
+            data=buf.getvalue(),
+            file_name=f"XTRNATE_{partner}_{start_day}_to_{end_day}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+    with d2:
+        if ppt_bytes:
+            st.download_button(
+                f"📊 PPT — {partner} review deck",
+                data=ppt_bytes,
+                file_name=f"XTRNATE_{partner}_{start_day}_to_{end_day}.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                use_container_width=True,
+            )
 
 st.markdown("---")
 st.subheader("Current open (selected ISP)")
