@@ -1,18 +1,25 @@
 """Auto-load tickets from Google Sheet when session is empty."""
 import streamlit as st
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from utils.google_sheets import load_sheet_as_csv, extract_sheet_id
 from utils.data_processing import process_closed_tickets, process_open_tickets
 
 DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I/edit?usp=sharing"
-# Raw DATA tab (user specified)
 DEFAULT_GID = 1980854633
+IST = ZoneInfo("Asia/Kolkata")
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _fetch_raw_sheet(sheet_id: str, gid: int):
     return load_sheet_as_csv(sheet_id, gid=gid)
 
+def _mark_updated():
+    st.session_state.data_last_updated = datetime.now(IST)
+
 def auto_load_tickets(force: bool = False):
     if not force and st.session_state.get('closed_df') is not None:
+        if 'data_last_updated' not in st.session_state:
+            _mark_updated()
         return True, "already_loaded"
 
     sheet_id = extract_sheet_id(DEFAULT_SHEET_URL)
@@ -26,7 +33,6 @@ def auto_load_tickets(force: bool = False):
         if processed is None or processed.empty:
             return False, "Empty data from sheet"
 
-        # Unique Incident ID
         if 'ticket_id' in processed.columns:
             processed = processed.drop_duplicates(subset=['ticket_id'], keep='first')
 
@@ -47,12 +53,14 @@ def auto_load_tickets(force: bool = False):
             st.session_state.open_df = open_part if not open_part.empty else None
             st.session_state.raw_tickets_df = processed
             st.session_state.data_auto_loaded = True
+            _mark_updated()
             return True, f"Closed: {len(closed_part)} | Open: {len(open_part)}"
         else:
             st.session_state.closed_df = processed
             st.session_state.open_df = None
             st.session_state.raw_tickets_df = processed
             st.session_state.data_auto_loaded = True
+            _mark_updated()
             return True, f"Closed: {len(processed)}"
     except Exception as e:
         return False, str(e)
