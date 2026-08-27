@@ -11,12 +11,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Mobile + premium CSS
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
-
     .main-header {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
         padding: 1.2rem 1.5rem; border-radius: 16px; margin-bottom: 1rem;
@@ -28,21 +26,17 @@ st.markdown("""
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     }
     .main-header p { margin: 0.25rem 0 0 0; opacity: 0.85; font-size: 0.9rem; }
-
     div[data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
     }
     .stButton > button { border-radius: 10px; font-weight: 600; }
     #MainMenu {visibility: hidden;} footer {visibility: hidden;}
-
-    /* Mobile tweaks */
     @media (max-width: 768px) {
         .main-header h1 { font-size: 1.4rem; }
         .main-header { padding: 1rem; }
         div[data-testid="stMetricValue"] { font-size: 1.1rem !important; }
         .block-container { padding: 0.8rem 0.6rem !important; }
     }
-
     .search-card {
         background: linear-gradient(135deg, #1e293b, #0f172a);
         border: 1px solid #38bdf8;
@@ -54,7 +48,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Session defaults — ISP defaults to ALL so pages work immediately
 if 'selected_isp' not in st.session_state:
     st.session_state.selected_isp = "ALL"
 if 'closed_df' not in st.session_state:
@@ -66,8 +59,8 @@ if 'site_master' not in st.session_state:
 
 from utils.auto_load import auto_load_tickets
 from utils.site_search import render_site_history_panel
+from utils.bootstrap import show_last_update
 
-# ========== ALWAYS AUTO-LOAD ON OPEN ==========
 if st.session_state.closed_df is None:
     with st.spinner("📡 Data auto-fetch ho raha hai (Google Sheet)..."):
         ok, msg = auto_load_tickets()
@@ -76,6 +69,8 @@ if st.session_state.closed_df is None:
     elif not ok:
         st.sidebar.error(f"Auto-load fail: {msg}")
 
+show_last_update()
+
 st.markdown("""
 <div class="main-header">
     <h1>📡 XTRNATE Project</h1>
@@ -83,7 +78,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ========== FIXED TOP SITE SEARCH ==========
 st.markdown('<div class="search-card">', unsafe_allow_html=True)
 st.markdown("**🔍 Site Code Quick Search** — type code → full down history + reasons")
 sc1, sc2 = st.columns([5, 1])
@@ -102,7 +96,6 @@ if site_q and (search_btn or site_q):
     render_site_history_panel(site_q.strip().upper())
     st.markdown("---")
 
-# ISP select (optional now — default ALL)
 st.markdown("### ISP Filter (optional)")
 st.caption("Default = ALL. Specific partner chahiye to select karo.")
 col1, col2, col3 = st.columns(3)
