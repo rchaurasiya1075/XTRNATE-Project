@@ -1,215 +1,204 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import sys
 import os
+from datetime import date, timedelta
 from io import BytesIO
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.data_processing import filter_by_period, get_summary_stats
+from utils.bootstrap import ensure_ready, show_last_update
+from utils.data_processing import detect_category, get_summary_stats
 
 st.set_page_config(page_title="ISP Comparison | XTRNATE", page_icon="⚖️", layout="wide")
+show_last_update()
 
-st.title("⚖️ HCIN vs ONEOTT Comparison")
-st.markdown("Side-by-side comparison of both ISPs — Closed + Open metrics")
+st.title("⚖️ ISP Report — HCIN / ONEOTT")
+st.caption("Date range select karo • HCIN ya OTT click • Last remark se category • Count + % + graph + site list")
+ensure_ready()
 
-closed_df = st.session_state.get('closed_df')
-open_df = st.session_state.get('open_df')
+closed_df = st.session_state.get("closed_df")
+open_df = st.session_state.get("open_df")
+raw_df = st.session_state.get("raw_tickets_df")
 
-if (closed_df is None or closed_df.empty) and (open_df is None or open_df.empty):
-    st.warning("Data nahi hai. Pehle **Upload Data** ya Dashboard se Google Sheet load karo.")
+if closed_df is None or closed_df.empty:
+    if raw_df is not None and not raw_df.empty:
+        closed_df = raw_df.copy()
+    else:
+        st.warning("Data nahi hai. Home pe sheet load karo.")
+        st.stop()
+
+work = closed_df.copy()
+if "submitted_time" in work.columns:
+    work["submitted_time"] = pd.to_datetime(work["submitted_time"], errors="coerce")
+if "resolved_time" in work.columns:
+    work["resolved_time"] = pd.to_datetime(work["resolved_time"], errors="coerce")
+
+# Category ALWAYS from last remark / reason text
+remark_src = work["reason"] if "reason" in work.columns else pd.Series("", index=work.index)
+work["outage_class"] = remark_src.apply(detect_category)
+
+partner = st.radio("ISP (sirf selected ka report)", ["HCIN", "ONEOTT"], horizontal=True)
+
+min_d = work["submitted_time"].min() if "submitted_time" in work.columns else pd.NaT
+max_d = work["submitted_time"].max() if "submitted_time" in work.columns else pd.NaT
+today = date.today()
+def_start = (today - timedelta(days=6))
+def_end = today
+if pd.notna(min_d):
+    def_start = max(min_d.date(), today - timedelta(days=30))
+if pd.notna(max_d):
+    def_end = max_d.date()
+
+c1, c2, c3 = st.columns(3)
+with c1:
+    start_day = st.date_input("Starting day", value=def_start)
+with c2:
+    end_day = st.date_input("End day", value=def_end)
+with c3:
+    date_on = st.selectbox("Date column", ["Submitted Time", "Resolved Time"])
+
+if start_day > end_day:
+    st.error("Starting day end day se pehle hona chahiye.")
     st.stop()
 
-# Period filter for closed
-period = st.radio(
-    "Period (Closed tickets)",
-    ["Last 1 Month", "Last 3 Months", "Last 6 Months", "Overall"],
-    horizontal=True
-)
-period_map = {"Last 1 Month": "1M", "Last 3 Months": "3M", "Last 6 Months": "6M", "Overall": "ALL"}
+time_col = "submitted_time" if date_on == "Submitted Time" else "resolved_time"
+if time_col not in work.columns:
+    st.error(f"{date_on} column nahi mili.")
+    st.stop()
 
-def get_isp_data(df, isp_name):
-    if df is None or df.empty:
-        return pd.DataFrame()
-    if 'isp' not in df.columns:
-        return df.copy()
-    return df[df['isp'] == isp_name].copy()
+start_ts = pd.Timestamp(start_day)
+end_ts = pd.Timestamp(end_day) + pd.Timedelta(days=1)
+period = work[work[time_col].notna() & (work[time_col] >= start_ts) & (work[time_col] < end_ts)].copy()
 
-# Closed split
-if closed_df is not None and not closed_df.empty:
-    closed_all = filter_by_period(closed_df, period_map[period]) if period_map[period] != "ALL" else closed_df.copy()
+if "isp" in period.columns:
+    view = period[period["isp"] == partner].copy()
 else:
-    closed_all = pd.DataFrame()
+    view = period.copy()
 
-hcin_closed = get_isp_data(closed_all, 'HCIN')
-ott_closed = get_isp_data(closed_all, 'ONEOTT')
-
-# Open split
-hcin_open = get_isp_data(open_df, 'HCIN') if open_df is not None else pd.DataFrame()
-ott_open = get_isp_data(open_df, 'ONEOTT') if open_df is not None else pd.DataFrame()
-
-# ========== KPI COMPARISON ==========
-st.subheader("📊 Key Metrics Comparison")
-
-hcin_stats = get_summary_stats(hcin_closed)
-ott_stats = get_summary_stats(ott_closed)
-
-metrics = [
-    ("Closed Tickets", hcin_stats.get('total_tickets', 0), ott_stats.get('total_tickets', 0)),
-    ("Total Downtime (Hrs)", hcin_stats.get('total_downtime_hrs', 0), ott_stats.get('total_downtime_hrs', 0)),
-    ("Avg Resolution (Hrs)", hcin_stats.get('avg_downtime_hrs', 0), ott_stats.get('avg_downtime_hrs', 0)),
-    ("Currently Open", len(hcin_open), len(ott_open)),
-]
-
-cols = st.columns(4)
-for i, (label, h_val, o_val) in enumerate(metrics):
-    with cols[i]:
-        st.markdown(f"**{label}**")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.metric("HCIN", h_val)
-        with c2:
-            st.metric("ONEOTT", o_val)
-
-# Bar comparison chart
-st.markdown("#### Closed Tickets & Open Calls")
-comp_df = pd.DataFrame({
-    'Metric': ['Closed Tickets', 'Closed Tickets', 'Open Calls', 'Open Calls'],
-    'ISP': ['HCIN', 'ONEOTT', 'HCIN', 'ONEOTT'],
-    'Count': [
-        hcin_stats.get('total_tickets', 0),
-        ott_stats.get('total_tickets', 0),
-        len(hcin_open),
-        len(ott_open)
-    ]
-})
-fig = px.bar(comp_df, x='Metric', y='Count', color='ISP', barmode='group',
-             color_discrete_map={'HCIN': '#38bdf8', 'ONEOTT': '#f97316'}, text='Count')
-fig.update_layout(template='plotly_dark', height=380)
-st.plotly_chart(fig, use_container_width=True)
-
-st.markdown("---")
-
-# ========== STATE COMPARISON ==========
-st.subheader("🗺️ State-wise Comparison (Closed)")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("**HCIN — Top States**")
-    if not hcin_closed.empty and 'state' in hcin_closed.columns:
-        s = hcin_closed['state'].value_counts().head(10).reset_index()
-        s.columns = ['State', 'Count']
-        fig = px.bar(s, x='State', y='Count', color='Count', color_continuous_scale='Blues', text='Count')
-        fig.update_layout(template='plotly_dark', height=320)
-        st.plotly_chart(fig, use_container_width=True)
+# Also include owner text match (Celerity / HICOM)
+if view.empty and "owner" in period.columns:
+    own = period["owner"].astype(str).str.upper()
+    if partner == "HCIN":
+        view = period[own.str.contains("HCIN|HICOM", na=False)].copy()
     else:
-        st.info("HCIN closed data nahi / state missing")
+        view = period[own.str.contains("ONEOTT|OTT|CELERITY", na=False)].copy()
 
-with col2:
-    st.markdown("**ONEOTT — Top States**")
-    if not ott_closed.empty and 'state' in ott_closed.columns:
-        s = ott_closed['state'].value_counts().head(10).reset_index()
-        s.columns = ['State', 'Count']
-        fig = px.bar(s, x='State', y='Count', color='Count', color_continuous_scale='Oranges', text='Count')
-        fig.update_layout(template='plotly_dark', height=320)
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("ONEOTT closed data nahi / state missing")
+open_view = pd.DataFrame()
+if open_df is not None and not open_df.empty:
+    ov = open_df.copy()
+    if "isp" in ov.columns:
+        open_view = ov[ov["isp"] == partner].copy()
+    elif "owner" in ov.columns:
+        own = ov["owner"].astype(str).str.upper()
+        key = "HCIN|HICOM" if partner == "HCIN" else "ONEOTT|OTT|CELERITY"
+        open_view = ov[own.str.contains(key, na=False)].copy()
 
-st.markdown("---")
-
-# ========== CATEGORY COMPARISON ==========
-st.subheader("📁 Category Comparison (Closed)")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("**HCIN Categories**")
-    if not hcin_closed.empty and 'category' in hcin_closed.columns:
-        c = hcin_closed['category'].value_counts().reset_index()
-        c.columns = ['Category', 'Count']
-        fig = px.pie(c, names='Category', values='Count', hole=0.4)
-        fig.update_layout(template='plotly_dark', height=350)
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Category nahi mila")
-
-with col2:
-    st.markdown("**ONEOTT Categories**")
-    if not ott_closed.empty and 'category' in ott_closed.columns:
-        c = ott_closed['category'].value_counts().reset_index()
-        c.columns = ['Category', 'Count']
-        fig = px.pie(c, names='Category', values='Count', hole=0.4)
-        fig.update_layout(template='plotly_dark', height=350)
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Category nahi mila")
-
-st.markdown("---")
-
-# ========== OPEN CALLS COMPARISON ==========
-st.subheader("📞 Current Open Calls Comparison")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown(f"**HCIN Open: {len(hcin_open)}**")
-    if not hcin_open.empty:
-        cols_show = [c for c in ['ticket_id', 'site_code', 'status', 'state', 'open_hours', 'reason'] if c in hcin_open.columns]
-        st.dataframe(hcin_open[cols_show].head(15), use_container_width=True, height=300)
-    else:
-        st.info("No HCIN open tickets")
-
-with col2:
-    st.markdown(f"**ONEOTT Open: {len(ott_open)}**")
-    if not ott_open.empty:
-        cols_show = [c for c in ['ticket_id', 'site_code', 'status', 'state', 'open_hours', 'reason'] if c in ott_open.columns]
-        st.dataframe(ott_open[cols_show].head(15), use_container_width=True, height=300)
-    else:
-        st.info("No ONEOTT open tickets")
-
-st.markdown("---")
-
-# ========== SUMMARY TABLE ==========
-st.subheader("📋 Summary Table")
-
-summary = pd.DataFrame({
-    'Metric': [
-        'Closed Tickets',
-        'Total Downtime (Hrs)',
-        'Avg Resolution (Hrs)',
-        'Open Calls',
-        'Critical Open (≥8h)' if True else 'Critical Open'
-    ],
-    'HCIN': [
-        hcin_stats.get('total_tickets', 0),
-        hcin_stats.get('total_downtime_hrs', 0),
-        hcin_stats.get('avg_downtime_hrs', 0),
-        len(hcin_open),
-        len(hcin_open[hcin_open['open_hours'] >= 8]) if not hcin_open.empty and 'open_hours' in hcin_open.columns else 0
-    ],
-    'ONEOTT': [
-        ott_stats.get('total_tickets', 0),
-        ott_stats.get('total_downtime_hrs', 0),
-        ott_stats.get('avg_downtime_hrs', 0),
-        len(ott_open),
-        len(ott_open[ott_open['open_hours'] >= 8]) if not ott_open.empty and 'open_hours' in ott_open.columns else 0
-    ]
-})
-
-st.dataframe(summary, use_container_width=True)
-
-def to_excel(df):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Comparison')
-    return output.getvalue()
-
-st.download_button(
-    "📥 Download Comparison Summary",
-    data=to_excel(summary),
-    file_name="XTRNATE_HCIN_vs_ONEOTT_Comparison.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+st.markdown(
+    f"### {partner} Report  •  {start_day.strftime('%d-%b-%Y')} se {end_day.strftime('%d-%b-%Y')}  "
+    f"({date_on})"
 )
+
+if view.empty:
+    st.info("Is date range / ISP pe closed ticket nahi mila.")
+else:
+    stats = get_summary_stats(view)
+    total = len(view)
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Tickets", total)
+    k2.metric("Total DT (Hrs)", stats.get("total_downtime_hrs", 0))
+    k3.metric("Avg Resolve (Hrs)", stats.get("avg_downtime_hrs", 0))
+    k4.metric("Unique Sites", view["site_code"].nunique() if "site_code" in view.columns else 0)
+    k5.metric("Open now", len(open_view))
+
+    # ---- Classification count + % ----
+    st.subheader("📊 Classification of Outage (Last Remark se)")
+    cls = view["outage_class"].fillna("Others").astype(str).value_counts().reset_index()
+    cls.columns = ["Outage Category", "Count"]
+    cls["%"] = (cls["Count"] / cls["Count"].sum() * 100).round(1)
+    cls.loc[len(cls)] = ["TOTAL", int(cls["Count"].sum()), 100.0]
+    st.dataframe(cls, use_container_width=True, hide_index=True)
+
+    chart = cls[cls["Outage Category"] != "TOTAL"]
+    g1, g2 = st.columns(2)
+    with g1:
+        fig = px.bar(chart, x="Outage Category", y="Count", text="Count",
+                     color="Count", color_continuous_scale="Blues")
+        fig.update_layout(template="plotly_dark", height=380, xaxis_tickangle=-35)
+        st.plotly_chart(fig, use_container_width=True)
+    with g2:
+        fig = px.pie(chart, names="Outage Category", values="Count", hole=0.35)
+        fig.update_layout(template="plotly_dark", height=380)
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ---- Daily count ----
+    st.subheader("📅 Daily ticket count")
+    daily = view.set_index(time_col).resample("D").size().reset_index()
+    daily.columns = ["Date", "Count"]
+    fig = px.bar(daily, x="Date", y="Count", text="Count", color="Count")
+    fig.update_layout(template="plotly_dark", height=320)
+    st.plotly_chart(fig, use_container_width=True)
+    st.dataframe(daily, use_container_width=True, hide_index=True)
+
+    # ---- State ----
+    if "state" in view.columns:
+        st.subheader("🌍 State-wise count + %")
+        stt = view["state"].fillna("Unknown").astype(str).value_counts().reset_index()
+        stt.columns = ["State", "Count"]
+        stt["%"] = (stt["Count"] / stt["Count"].sum() * 100).round(1)
+        stt.loc[len(stt)] = ["TOTAL", int(stt["Count"].sum()), 100.0]
+        st.dataframe(stt, use_container_width=True, hide_index=True)
+        fig = px.bar(stt[stt["State"] != "TOTAL"], x="State", y="Count", text="Count", color="Count")
+        fig.update_layout(template="plotly_dark", height=340, xaxis_tickangle=-30)
+        st.plotly_chart(fig, use_container_width=True)
+
+    # ---- Site codes ----
+    st.subheader("📍 Site codes (is period ke)")
+    if "site_code" in view.columns:
+        site = view.groupby("site_code").agg(
+            tickets=("ticket_id", "count") if "ticket_id" in view.columns else ("site_code", "count"),
+            state=("state", "first") if "state" in view.columns else ("site_code", "first"),
+            last_remark=("reason", "last") if "reason" in view.columns else ("site_code", "first"),
+            category=("outage_class", lambda s: ", ".join(sorted(set(s.astype(str))))),
+        ).reset_index().sort_values("tickets", ascending=False)
+        st.dataframe(site, use_container_width=True, height=360)
+    else:
+        site = pd.DataFrame()
+        st.info("site_code missing")
+
+    # ---- Ticket detail ----
+    st.subheader("📋 Ticket-wise detail")
+    show_cols = [c for c in [
+        "ticket_id", "site_code", "state", "city", "submitted_time", "resolved_time",
+        "status", "owner", "isp", "outage_class", "reason", "down_time_min"
+    ] if c in view.columns]
+    detail = view[show_cols].sort_values(time_col, ascending=False)
+    st.dataframe(detail, use_container_width=True, height=420)
+
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
+        pd.DataFrame({
+            "Field": ["ISP", "From", "To", "Date on", "Tickets", "Open now"],
+            "Value": [partner, str(start_day), str(end_day), date_on, total, len(open_view)],
+        }).to_excel(w, index=False, sheet_name="Cover")
+        cls.to_excel(w, index=False, sheet_name="Outage_Class")
+        daily.to_excel(w, index=False, sheet_name="Daily")
+        if "state" in view.columns:
+            stt.to_excel(w, index=False, sheet_name="State")
+        if not site.empty:
+            site.to_excel(w, index=False, sheet_name="Sites")
+        detail.to_excel(w, index=False, sheet_name="Tickets")
+    st.download_button(
+        f"📥 Download {partner} report Excel",
+        data=buf.getvalue(),
+        file_name=f"XTRNATE_{partner}_{start_day}_to_{end_day}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+st.markdown("---")
+st.subheader("Current open (selected ISP)")
+if open_view is None or open_view.empty:
+    st.info("Is ISP pe current open nahi.")
+else:
+    oc = [c for c in ["ticket_id", "site_code", "status", "state", "submitted_time", "open_hours", "reason"] if c in open_view.columns]
+    st.dataframe(open_view[oc], use_container_width=True, height=280)
