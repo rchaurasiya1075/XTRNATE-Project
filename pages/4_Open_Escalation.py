@@ -20,6 +20,7 @@ if not isp:
 
 open_df = st.session_state.get('open_df')
 closed_df = st.session_state.get('closed_df')
+raw_df = st.session_state.get('raw_tickets_df')
 
 if open_df is None or open_df.empty:
     st.warning("No open tickets data found. Please upload from **Upload Data** page.")
@@ -91,6 +92,91 @@ display_cols = [c for c in display_cols if c in filtered.columns]
 styled = filtered[display_cols].sort_values('open_hours', ascending=False) if 'open_hours' in filtered.columns else filtered[display_cols]
 
 st.dataframe(styled.style.apply(highlight_level, axis=1), use_container_width=True, height=400)
+
+# ===================== AUTO HISTORY ALL OPEN SITES =====================
+st.markdown("---")
+st.subheader("📊 All Open Sites — Auto History (1M / 3M / 4M / 6M)")
+st.caption("Har open ticket ke site code ka history automatic. Select karne ki zaroorat nahi.")
+
+hist_src = pd.DataFrame()
+if closed_df is not None and not closed_df.empty:
+    hist_src = closed_df.copy()
+elif raw_df is not None and not raw_df.empty:
+    hist_src = raw_df.copy()
+    if isp != "ALL" and "isp" in hist_src.columns:
+        hist_src = hist_src[hist_src["isp"] == isp].copy()
+
+if "site_code" not in filtered.columns:
+    st.warning("site_code missing in open tickets.")
+elif hist_src.empty or "site_code" not in hist_src.columns:
+    st.warning("Closed / history data nahi mila. Auto history ke liye closed tickets load hone chahiye.")
+else:
+    if "submitted_time" in hist_src.columns:
+        hist_src["submitted_time"] = pd.to_datetime(hist_src["submitted_time"], errors="coerce")
+    now = pd.Timestamp(datetime.now())
+    cuts = {
+        "1M": now - pd.DateOffset(months=1),
+        "3M": now - pd.DateOffset(months=3),
+        "4M": now - pd.DateOffset(months=4),
+        "6M": now - pd.DateOffset(months=6),
+    }
+    open_sites = (
+        filtered["site_code"].dropna().astype(str).str.strip().str.upper().unique().tolist()
+    )
+    rows = []
+    for sc in open_sites:
+        cur = filtered[filtered["site_code"].astype(str).str.strip().str.upper() == sc]
+        past = hist_src[hist_src["site_code"].astype(str).str.strip().str.upper() == sc].copy()
+        counts = {}
+        for lab, cut in cuts.items():
+            if "submitted_time" in past.columns:
+                counts[lab] = int(past[past["submitted_time"].notna() & (past["submitted_time"] >= cut)].shape[0])
+            else:
+                counts[lab] = int(len(past))
+        reasons = ""
+        if not past.empty:
+            src_r = past["reason"] if "reason" in past.columns else past.get("reason_clean", pd.Series(dtype=str))
+            cats = past["category"] if "category" in past.columns else src_r
+            reasons = " | ".join(sorted(set(cats.dropna().astype(str).str.slice(0, 40).tolist()))[:6])
+        last_down = ""
+        if not past.empty and "submitted_time" in past.columns and past["submitted_time"].notna().any():
+            last_down = past["submitted_time"].max()
+        rows.append({
+            "Site Code": sc,
+            "State": cur["state"].iloc[0] if "state" in cur.columns and len(cur) else "",
+            "Open now": len(cur),
+            "Current ticket": ", ".join(cur["ticket_id"].astype(str).head(3).tolist()) if "ticket_id" in cur.columns else "",
+            "Open hrs": float(cur["open_hours"].max()) if "open_hours" in cur.columns and len(cur) else None,
+            "Status": ", ".join(cur["status"].astype(str).unique().tolist()) if "status" in cur.columns else "",
+            "1M downs": counts["1M"],
+            "3M downs": counts["3M"],
+            "4M downs": counts["4M"],
+            "6M downs": counts["6M"],
+            "Total past closed": len(past),
+            "Last down": last_down,
+            "Reasons / category": reasons,
+            "Current remark": str(cur["reason"].iloc[0])[:120] if "reason" in cur.columns and len(cur) else "",
+        })
+    auto = pd.DataFrame(rows).sort_values(["6M downs", "Open hrs"], ascending=False)
+    a1, a2, a3, a4 = st.columns(4)
+    a1.metric("Open sites", len(auto))
+    a2.metric("2+ in 1M", int((auto["1M downs"] >= 2).sum()))
+    a3.metric("3+ in 3M", int((auto["3M downs"] >= 3).sum()))
+    a4.metric("3+ in 6M", int((auto["6M downs"] >= 3).sum()))
+    st.dataframe(auto, use_container_width=True, height=480)
+
+    def to_excel_auto(df):
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="Open_Sites_History")
+        return output.getvalue()
+
+    st.download_button(
+        "📥 Download ALL open sites history sheet",
+        data=to_excel_auto(auto),
+        file_name=f"XTRNATE_OpenSites_History_{isp}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 # ===================== SITE HISTORY FOR OPEN TICKETS =====================
 st.markdown("---")
