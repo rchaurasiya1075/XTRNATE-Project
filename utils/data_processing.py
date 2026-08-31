@@ -28,14 +28,30 @@ def parse_datetime(series):
         except:
             return pd.Series(dtype='datetime64[ns]')
 
+def _norm_remark(reason_text):
+    t = str(reason_text or '').lower()
+    t = t.replace('close_enclosure', ' ')
+    t = t.replace('/', ' ').replace('\\', ' ').replace('::', ' ').replace('.', ' ').replace('_', ' ')
+    t = re.sub(r'\s+', ' ', t)
+    return t
+
 def detect_category(reason_text):
     """One ticket = one category. Specific last-remark overrides first."""
     try:
         if pd.isna(reason_text):
             return 'Others'
-        text = str(reason_text).lower()
+        text = _norm_remark(reason_text)
 
-        # --- exclusive remark overrides (remove from Force Majeure / Others / Third Party) ---
+        # Vendor Change — exact close remark
+        if (
+            'alternate service provider' in text
+            or 'provisioned on alternate' in text
+            or 'link provisioned on alternate' in text
+            or ('existing operator' in text and ('not stable' in text or 'link not stable' in text))
+            or ('link not stable' in text and 'alternate' in text)
+        ):
+            return 'Vendor Change'
+
         if (
             'not feasible' in text
             or 'technically not feasible' in text
@@ -43,14 +59,6 @@ def detect_category(reason_text):
             or 'has become technically not' in text
         ):
             return 'NOT Feasible for service'
-
-        if (
-            'alternate service provider' in text
-            or 'alternate service' in text
-            or 'provisioned on alternate' in text
-            or ('existing operator' in text and ('not stable' in text or 'link not stable' in text or 'provisioned' in text))
-        ):
-            return 'Vendor Change'
 
         if (
             'post rebooting onu' in text
@@ -171,7 +179,6 @@ def process_closed_tickets(df):
         except Exception:
             df['isp'] = 'OTHER'
 
-    # Category from last remark first for the 3 overrides, else sheet Problem Classification
     if 'reason' in df.columns:
         remark_cat = safe_series(df, 'reason').apply(detect_category)
         override_names = {
