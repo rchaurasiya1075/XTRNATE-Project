@@ -1,14 +1,26 @@
-"""Tag last-remark text for meeting analysis."""
+"""Tag last-remark text for meeting analysis. One primary tag only."""
 
 import pandas as pd
 
 TAG_RULES = [
-    ("Vendor Change", ["vendor change", "change of vendor", "vendor changed", "new vendor", "lm vendor", "last mile vendor"]),
+    ("NOT Feasible for service", [
+        "not feasible", "technically not feasible", "rolled back by isp",
+        "has become technically not",
+    ]),
+    ("Vendor Change", [
+        "vendor change", "change of vendor", "vendor changed", "new vendor",
+        "lm vendor", "last mile vendor", "alternate service provider",
+        "alternate service", "provisioned on alternate", "existing operator",
+    ]),
+    ("Device Rebooted", [
+        "post rebooting onu", "rebooting onu", "post reboot",
+        "onu by isp with customer intervention",
+    ]),
     ("ISP Change", ["isp change", "change of isp", "isp changed", "airtel to", "bsnl to", "switch isp"]),
     ("Migration", ["migration", "migrat", "link migration", "shifting", "media change", "fiber to air", "air to fiber"]),
-    ("Feasibility", ["feasibility", "feasibl", "not feasible", "survey pending", "feasibility pending"]),
-    ("Technical Issue", ["technical", "tech issue", "hardware", "configuration", "config issue", "device issue", "onu", "modem", "olt", "backend", "node isolation", "upstream"]),
+    ("Feasibility", ["feasibility", "feasibl", "survey pending", "feasibility pending"]),
     ("Fibre Cut", ["fibre cut", "fiber cut", "ofc cut", "cable cut"]),
+    ("Technical Issue", ["technical", "tech issue", "hardware", "configuration", "config issue", "device issue", "onu", "modem", "olt", "backend", "node isolation", "upstream"]),
     ("Power Issue", ["power outage", "power fail", "power issue", "no power", "electricity"]),
     ("Third Party", ["third party", "3rd party", "customer end", "bank end", "lan issue"]),
     ("Force Majeure", ["force maj", "rain", "flood", "landslide", "natural calamity", "storm"]),
@@ -21,8 +33,11 @@ def tag_remark(text):
     t = str(text or "").lower()
     if not t or t in ("nan", "none", "--"):
         return ["Unclassified"]
-    hits = [name for name, keys in TAG_RULES if any(k in t for k in keys)]
-    return hits or ["Others"]
+    # first match only — no double count
+    for name, keys in TAG_RULES:
+        if any(k in t for k in keys):
+            return [name]
+    return ["Others"]
 
 
 def primary_tag(text):
@@ -34,7 +49,7 @@ def apply_tags(df, reason_col="reason"):
     out = df.copy()
     src = out[reason_col] if reason_col in out.columns else pd.Series("", index=out.index)
     out["remark_tag"] = src.apply(primary_tag)
-    out["remark_tags"] = src.apply(lambda x: ", ".join(tag_remark(x)))
+    out["remark_tags"] = out["remark_tag"]
     return out
 
 

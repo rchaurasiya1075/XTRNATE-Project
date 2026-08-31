@@ -29,11 +29,37 @@ def parse_datetime(series):
             return pd.Series(dtype='datetime64[ns]')
 
 def detect_category(reason_text):
-    """Fallback only when Problem Classification is empty."""
+    """One ticket = one category. Specific last-remark overrides first."""
     try:
         if pd.isna(reason_text):
             return 'Others'
         text = str(reason_text).lower()
+
+        # --- exclusive remark overrides (remove from Force Majeure / Others / Third Party) ---
+        if (
+            'not feasible' in text
+            or 'technically not feasible' in text
+            or 'rolled back by isp' in text
+            or 'has become technically not' in text
+        ):
+            return 'NOT Feasible for service'
+
+        if (
+            'alternate service provider' in text
+            or 'alternate service' in text
+            or 'provisioned on alternate' in text
+            or ('existing operator' in text and ('not stable' in text or 'link not stable' in text or 'provisioned' in text))
+        ):
+            return 'Vendor Change'
+
+        if (
+            'post rebooting onu' in text
+            or 'rebooting onu' in text
+            or 'post reboot' in text
+            or ('reboot' in text and 'onu' in text and 'customer intervention' in text)
+        ):
+            return 'ONU/Media converter/ZTE modem Rebooted'
+
         if 'fibre cut' in text or 'fiber cut' in text:
             return 'Fibre Cut'
         if 'backend' in text or 'upstream' in text or 'node isolation' in text:
@@ -145,17 +171,28 @@ def process_closed_tickets(df):
         except Exception:
             df['isp'] = 'OTHER'
 
-    # Category = exact Problem Classification from sheet
+    # Category from last remark first for the 3 overrides, else sheet Problem Classification
+    if 'reason' in df.columns:
+        remark_cat = safe_series(df, 'reason').apply(detect_category)
+        override_names = {
+            'NOT Feasible for service',
+            'Vendor Change',
+            'ONU/Media converter/ZTE modem Rebooted',
+        }
+        use_override = remark_cat.isin(list(override_names))
+    else:
+        remark_cat = None
+        use_override = None
+
     if 'problem_class' in df.columns:
         pc = safe_series(df, 'problem_class').astype(str).str.strip()
         blank = pc.isin(['', '--', 'nan', 'None', 'NaN'])
         df['category'] = pc
-        if 'reason' in df.columns:
-            df.loc[blank, 'category'] = safe_series(df, 'reason').apply(detect_category)
-        else:
-            df.loc[blank, 'category'] = 'Others'
-    elif 'reason' in df.columns:
-        df['category'] = safe_series(df, 'reason').apply(detect_category)
+        if remark_cat is not None:
+            df.loc[blank, 'category'] = remark_cat[blank]
+            df.loc[use_override, 'category'] = remark_cat[use_override]
+    elif remark_cat is not None:
+        df['category'] = remark_cat
     else:
         df['category'] = 'Others'
 
