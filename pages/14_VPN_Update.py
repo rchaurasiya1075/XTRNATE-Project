@@ -54,48 +54,65 @@ def build_note(ho_open, branch_sites, backup_on):
     return ho_line, branch_line, down, backup_on
 
 
-def render_update_png(rows, ho_line, branch_line):
-    from PIL import Image, ImageDraw, ImageFont
+def _font(size):
+    from PIL import ImageFont
+    paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+    ]
+    for p in paths:
+        try:
+            return ImageFont.truetype(p, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
 
-    W, header_h, row_h, footer_h = 920, 88, 52, 92
+
+def render_update_png(rows, ho_line, branch_line, dlabel=""):
+    from PIL import Image, ImageDraw
+
+    W, header_h, row_h, footer_h = 1600, 150, 92, 180
     H = header_h + row_h * len(rows) + footer_h
-    img = Image.new("RGB", (W, H), "#ffffff")
+    img = Image.new("RGB", (W, H), "#FFFFFF")
     d = ImageDraw.Draw(img)
-    try:
-        font_h = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
-        font_l = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
-        font_n = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
-        font_f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
-    except Exception:
-        font_h = font_l = font_n = font_f = ImageFont.load_default()
+    font_h = _font(64)
+    font_sub = _font(26)
+    font_l = _font(36)
+    font_n = _font(48)
+    font_f = _font(28)
 
     d.rectangle([0, 0, W, header_h], fill="#1B4F72")
     title = "XTRANET UPDATE"
     bbox = d.textbbox((0, 0), title, font=font_h)
     tw = bbox[2] - bbox[0]
-    d.text(((W - tw) / 2, 24), title, fill="#ffffff", font=font_h)
+    d.text(((W - tw) / 2, 28), title, fill="#FFFFFF", font=font_h)
+    if dlabel:
+        sb = d.textbbox((0, 0), dlabel, font=font_sub)
+        sw = sb[2] - sb[0]
+        d.text(((W - sw) / 2, 104), dlabel, fill="#D6EAF8", font=font_sub)
 
-    val_w = 168
+    val_w = 280
     y = header_h
     for i, (label, val, color) in enumerate(rows):
-        bg = "#F4F7FB" if i % 2 == 0 else "#EEF2F6"
+        bg = "#F7FAFC" if i % 2 == 0 else "#EEF3F8"
         d.rectangle([0, y, W - val_w, y + row_h], fill=bg)
         d.rectangle([W - val_w, y, W, y + row_h], fill=color)
-        d.line([0, y + row_h - 1, W, y + row_h - 1], fill="#D0D7DE", width=1)
-        d.text((18, y + 13), label, fill="#0F172A", font=font_l)
+        d.line([0, y + row_h - 2, W, y + row_h - 2], fill="#C5D0DA", width=2)
+        d.text((36, y + 26), label, fill="#0F172A", font=font_l)
         num = str(val)
         nb = d.textbbox((0, 0), num, font=font_n)
-        nw = nb[2] - nb[0]
-        d.text((W - val_w + (val_w - nw) / 2, y + 10), num, fill="#ffffff", font=font_n)
+        nw, nh = nb[2] - nb[0], nb[3] - nb[1]
+        d.text((W - val_w + (val_w - nw) / 2, y + (row_h - nh) / 2 - 6), num, fill="#FFFFFF", font=font_n)
         y += row_h
 
     d.rectangle([0, y, W, H], fill="#FFFFFF")
     for i, line in enumerate([ho_line, branch_line]):
         bb = d.textbbox((0, 0), line, font=font_f)
         lw = bb[2] - bb[0]
-        d.text(((W - lw) / 2, y + 16 + i * 28), line, fill="#111111", font=font_f)
+        d.text(((W - lw) / 2, y + 36 + i * 48), line, fill="#111111", font=font_f)
 
-    d.rectangle([0, 0, W - 1, H - 1], outline="#1B4F72", width=3)
+    d.rectangle([0, 0, W - 1, H - 1], outline="#1B4F72", width=8)
     buf = BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -106,14 +123,18 @@ st.markdown(
     <style>
     .vpn-head {
       background:#1B4F72; color:#fff; text-align:center;
-      padding:16px 12px; font-size:1.8rem; font-weight:800;
-      letter-spacing:1px; border-radius:4px 4px 0 0;
+      padding:22px 12px 8px 12px; font-size:2.4rem; font-weight:800;
+      letter-spacing:2px;
     }
-    .vpn-wrap { border:3px solid #1B4F72; border-radius:4px; overflow:hidden; max-width:920px; }
+    .vpn-sub { background:#1B4F72; color:#D6EAF8; text-align:center;
+      padding:0 12px 16px 12px; font-size:1.05rem; font-weight:600; }
+    .vpn-wrap { border:6px solid #1B4F72; border-radius:6px; overflow:hidden; max-width:1100px; }
     .vpn-foot {
       background:#fff; color:#111; text-align:center;
-      padding:12px 10px; font-weight:700; font-size:0.95rem; line-height:1.45;
+      padding:18px 16px; font-weight:700; font-size:1.15rem; line-height:1.6;
     }
+    .vpn-label { font-size:1.25rem !important; padding:16px 20px !important; }
+    .vpn-num { font-size:1.7rem !important; width:200px !important; padding:16px 12px !important; }
     </style>
     """,
     unsafe_allow_html=True,
@@ -123,9 +144,9 @@ st.markdown(
 def metric_row(label, value, color):
     st.markdown(
         f"""
-        <div style="display:flex;align-items:stretch;margin:0;border-bottom:1px solid #d0d7de;">
-          <div style="flex:1;background:#f4f7fb;color:#0f172a;padding:10px 16px;font-weight:700;font-size:1.05rem;">{label}</div>
-          <div style="width:168px;background:{color};color:#fff;padding:10px 12px;text-align:center;font-weight:800;font-size:1.35rem;">{value}</div>
+        <div style="display:flex;align-items:stretch;margin:0;border-bottom:2px solid #c5d0da;">
+          <div class="vpn-label" style="flex:1;background:#f7fafc;color:#0f172a;font-weight:800;">{label}</div>
+          <div class="vpn-num" style="background:{color};color:#fff;text-align:center;font-weight:800;">{value}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -133,7 +154,7 @@ def metric_row(label, value, color):
 
 
 st.title("📡 VPN Update")
-st.caption("Screenshot jaisa card • HO / backup number manual • Image download")
+st.caption("Bada readable card • HO / backup manual • HD image download")
 
 if st.session_state.get("closed_df") is None and st.session_state.get("open_df") is None:
     with st.spinner("Data auto-load..."):
@@ -202,7 +223,7 @@ hicom_open = open_now[open_now["vendor"] == "HICOM / HCIN"]
 
 total_open = int(len(open_now))
 
-st.markdown("### HO / Backup (manual — ye number sheet se nahi aata)")
+st.markdown("### HO / Backup (manual)")
 m1, m2, m3 = st.columns(3)
 with m1:
     ho_open = st.number_input("HO open sites", min_value=0, max_value=max(total_open, 0), value=min(1, total_open), step=1)
@@ -231,10 +252,9 @@ kpis = [
     ("HICOM Open", int(len(hicom_open)), "#1A237E"),
 ]
 
-st.markdown(f"**Date:** {dlabel}  •  Branch down (no backup): **{down_n}**")
-
 st.markdown('<div class="vpn-wrap">', unsafe_allow_html=True)
 st.markdown('<div class="vpn-head">XTRANET UPDATE</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="vpn-sub">{dlabel}</div>', unsafe_allow_html=True)
 for label, val, color in kpis:
     metric_row(label, val, color)
 st.markdown(
@@ -243,22 +263,20 @@ st.markdown(
 )
 
 try:
-    png = render_update_png(kpis, ho_line, branch_line)
+    png = render_update_png(kpis, ho_line, branch_line, dlabel)
 except Exception as e:
     png = None
     st.warning(f"Image build issue: {e}")
 
-c1, c2 = st.columns(2)
-with c1:
-    if png:
-        st.download_button(
-            "🖼️ Image download (WhatsApp / mail ke liye)",
-            data=png,
-            file_name=f"XTRANET_UPDATE_{ref_day}.png",
-            mime="image/png",
-            use_container_width=True,
-        )
-        st.image(png, caption="Preview — yahi image download hogi", use_container_width=True)
+if png:
+    st.download_button(
+        "🖼️ HD Image download (WhatsApp / mail)",
+        data=png,
+        file_name=f"XTRANET_UPDATE_{ref_day}.png",
+        mime="image/png",
+        use_container_width=True,
+    )
+    st.image(png, caption="HD card — yahi image download hogi")
 
 st.markdown("---")
 tabs = st.tabs([
