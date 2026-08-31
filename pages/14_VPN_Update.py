@@ -7,8 +7,10 @@ from io import BytesIO
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
+from utils.bootstrap import show_last_update
 
 st.set_page_config(page_title="VPN Update | XTRNATE", page_icon="📡", layout="wide")
+show_last_update()
 
 
 def is_open_status(s):
@@ -37,16 +39,66 @@ def vendor_bucket(row):
     return "OTHER"
 
 
-def metric_row(label, value, color):
-    st.markdown(
-        f"""
-        <div style="display:flex;align-items:stretch;margin:0;border-bottom:1px solid #1e3a5f;">
-          <div style="flex:1;background:#f4f7fb;color:#0f172a;padding:10px 16px;font-weight:700;font-size:1.05rem;">{label}</div>
-          <div style="width:180px;background:{color};color:#fff;padding:10px 12px;text-align:center;font-weight:800;font-size:1.35rem;">{value}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+def build_note(ho_open, branch_sites, backup_on):
+    ho_open = max(0, int(ho_open or 0))
+    branch_sites = max(0, int(branch_sites or 0))
+    backup_on = max(0, min(int(backup_on or 0), branch_sites))
+    down = max(0, branch_sites - backup_on)
+    ho_line = f"{ho_open} HO OT : Primary down, site live on secondary link"
+    site_word = "site" if down == 1 else "sites"
+    verb = "is" if down == 1 else "are"
+    branch_line = (
+        f"Out of {branch_sites} sites, {backup_on} are running on the backup link, "
+        f"and {down} {site_word} {verb} down."
     )
+    return ho_line, branch_line, down, backup_on
+
+
+def render_update_png(rows, ho_line, branch_line):
+    from PIL import Image, ImageDraw, ImageFont
+
+    W, header_h, row_h, footer_h = 920, 88, 52, 92
+    H = header_h + row_h * len(rows) + footer_h
+    img = Image.new("RGB", (W, H), "#ffffff")
+    d = ImageDraw.Draw(img)
+    try:
+        font_h = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
+        font_l = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
+        font_n = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
+        font_f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16)
+    except Exception:
+        font_h = font_l = font_n = font_f = ImageFont.load_default()
+
+    d.rectangle([0, 0, W, header_h], fill="#1B4F72")
+    title = "XTRANET UPDATE"
+    bbox = d.textbbox((0, 0), title, font=font_h)
+    tw = bbox[2] - bbox[0]
+    d.text(((W - tw) / 2, 24), title, fill="#ffffff", font=font_h)
+
+    val_w = 168
+    y = header_h
+    for i, (label, val, color) in enumerate(rows):
+        bg = "#F4F7FB" if i % 2 == 0 else "#EEF2F6"
+        d.rectangle([0, y, W - val_w, y + row_h], fill=bg)
+        d.rectangle([W - val_w, y, W, y + row_h], fill=color)
+        d.line([0, y + row_h - 1, W, y + row_h - 1], fill="#D0D7DE", width=1)
+        d.text((18, y + 13), label, fill="#0F172A", font=font_l)
+        num = str(val)
+        nb = d.textbbox((0, 0), num, font=font_n)
+        nw = nb[2] - nb[0]
+        d.text((W - val_w + (val_w - nw) / 2, y + 10), num, fill="#ffffff", font=font_n)
+        y += row_h
+
+    d.rectangle([0, y, W, H], fill="#FFFFFF")
+    for i, line in enumerate([ho_line, branch_line]):
+        bb = d.textbbox((0, 0), line, font=font_f)
+        lw = bb[2] - bb[0]
+        d.text(((W - lw) / 2, y + 16 + i * 28), line, fill="#111111", font=font_f)
+
+    d.rectangle([0, 0, W - 1, H - 1], outline="#1B4F72", width=3)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 st.markdown(
@@ -57,13 +109,31 @@ st.markdown(
       padding:16px 12px; font-size:1.8rem; font-weight:800;
       letter-spacing:1px; border-radius:4px 4px 0 0;
     }
+    .vpn-wrap { border:3px solid #1B4F72; border-radius:4px; overflow:hidden; max-width:920px; }
+    .vpn-foot {
+      background:#fff; color:#111; text-align:center;
+      padding:12px 10px; font-weight:700; font-size:0.95rem; line-height:1.45;
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
+
+def metric_row(label, value, color):
+    st.markdown(
+        f"""
+        <div style="display:flex;align-items:stretch;margin:0;border-bottom:1px solid #d0d7de;">
+          <div style="flex:1;background:#f4f7fb;color:#0f172a;padding:10px 16px;font-weight:700;font-size:1.05rem;">{label}</div>
+          <div style="width:168px;background:{color};color:#fff;padding:10px 12px;text-align:center;font-weight:800;font-size:1.35rem;">{value}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 st.title("📡 VPN Update")
-st.caption("Jo date select karoge, usi din ka snapshot. Purane pages same hain.")
+st.caption("Screenshot jaisa card • HO / backup number manual • Image download")
 
 if st.session_state.get("closed_df") is None and st.session_state.get("open_df") is None:
     with st.spinner("Data auto-load..."):
@@ -105,36 +175,24 @@ raised_on_day = all_df["submitted_time"].notna() & (all_df["submitted_time"] >= 
 raised_before = all_df["submitted_time"].notna() & (all_df["submitted_time"] < day_start)
 resolved_on_day = all_df["resolved_time"].notna() & (all_df["resolved_time"] >= day_start) & (all_df["resolved_time"] < day_end)
 
-# Open AS OF end of selected day:
-# submitted before day_end AND (no resolve time OR resolved after day_end)
 open_as_of = (
     all_df["submitted_time"].notna()
     & (all_df["submitted_time"] < day_end)
     & (all_df["resolved_time"].isna() | (all_df["resolved_time"] >= day_end))
 )
 
-# If ticket still has open-like status and no resolved_time, keep it
-# (covers Assign to FE / Hold / Under Progress living in current dump)
 if "status" in all_df.columns:
     status_open_now = all_df["status"].apply(is_open_status)
-    # For the selected day == today, prefer live open statuses too
     if ref_day == date.today():
         open_as_of = open_as_of | status_open_now
     hold_mask = all_df["status"].apply(is_hold)
 else:
-    status_open_now = pd.Series(False, index=all_df.index)
     hold_mask = pd.Series(False, index=all_df.index)
 
 open_now = all_df[open_as_of].copy()
 old_open = all_df[open_as_of & raised_before].copy()
 today_raised = all_df[raised_on_day].copy()
-closed_on_day = all_df[resolved_on_day].copy()
-call_hold = all_df[open_as_of & hold_mask].copy() if ref_day == date.today() else all_df[resolved_on_day & hold_mask].copy()
-# Call on hold for a past day: current dump rarely has historical status.
-# If selected day is today use live hold; else show holds that are still open as-of that day AND status is hold (best available).
-if ref_day != date.today():
-    call_hold = all_df[open_as_of & hold_mask].copy()
-
+call_hold = all_df[open_as_of & hold_mask].copy()
 old_resolved = all_df[resolved_on_day & raised_before].copy()
 same_day_resolved = all_df[resolved_on_day & raised_on_day].copy()
 
@@ -142,36 +200,71 @@ open_now["vendor"] = open_now.apply(vendor_bucket, axis=1)
 celerity_open = open_now[open_now["vendor"] == "CELERITY / ONEOTT"]
 hicom_open = open_now[open_now["vendor"] == "HICOM / HCIN"]
 
+total_open = int(len(open_now))
+
+st.markdown("### HO / Backup (manual — ye number sheet se nahi aata)")
+m1, m2, m3 = st.columns(3)
+with m1:
+    ho_open = st.number_input("HO open sites", min_value=0, max_value=max(total_open, 0), value=min(1, total_open), step=1)
+with m2:
+    branch_sites = max(0, total_open - int(ho_open))
+    st.metric("Branch open (Total − HO)", branch_sites)
+with m3:
+    backup_on = st.number_input(
+        "Branch pe backup chal raha (manual)",
+        min_value=0,
+        max_value=max(branch_sites, 0),
+        value=max(0, branch_sites - 1) if branch_sites else 0,
+        step=1,
+    )
+
+ho_line, branch_line, down_n, backup_n = build_note(ho_open, branch_sites, backup_on)
+
 kpis = [
-    (f"Total Open Tickets (as of {dlabel})", len(open_now), "#2E7D32"),
-    (f"Old Open Tickets (raised before {dlabel})", len(old_open), "#F9A825"),
-    (f"Raised on {dlabel}", len(today_raised), "#1565C0"),
-    (f"Closed on {dlabel}", len(closed_on_day), "#37474F"),
-    (f"Call On Hold (as of {dlabel})", len(call_hold), "#6A1B9A"),
-    (f"Old Tickets Resolved on {dlabel}", len(old_resolved), "#C62828"),
-    (f"Same Day Resolved on {dlabel}", len(same_day_resolved), "#558B2F"),
-    (f"CELERITY Open (as of {dlabel})", len(celerity_open), "#0288D1"),
-    (f"HICOM Open (as of {dlabel})", len(hicom_open), "#1A237E"),
+    ("Total Open Tickets", total_open, "#2E7D32"),
+    ("Old Open Tickets", int(len(old_open)), "#F9A825"),
+    ("Today Raised Tickets", int(len(today_raised)), "#1565C0"),
+    ("Call On Hold", int(len(call_hold)), "#6A1B9A"),
+    ("Old Tickets Resolved", int(len(old_resolved)), "#C62828"),
+    ("Same Day Tickets Resolved", int(len(same_day_resolved)), "#558B2F"),
+    ("CELERITY Open", int(len(celerity_open)), "#0288D1"),
+    ("HICOM Open", int(len(hicom_open)), "#1A237E"),
 ]
 
-st.markdown(f'<div class="vpn-head">XTRANET UPDATE &nbsp;•&nbsp; {dlabel}</div>', unsafe_allow_html=True)
+st.markdown(f"**Date:** {dlabel}  •  Branch down (no backup): **{down_n}**")
+
+st.markdown('<div class="vpn-wrap">', unsafe_allow_html=True)
+st.markdown('<div class="vpn-head">XTRANET UPDATE</div>', unsafe_allow_html=True)
 for label, val, color in kpis:
     metric_row(label, val, color)
-
-st.caption(
-    f"Snapshot date: **{dlabel}**  •  "
-    f"Raised = Submitted Time us din  •  Closed = Resolved Time-Active us din  •  "
-    f"Same day = usi din raise + usi din resolve  •  "
-    f"Old resolved = us din se pehle raise, us din close  •  "
-    f"Open as of date = raise ho chuka, resolve us din ke baad / abhi pending"
+st.markdown(
+    f'<div class="vpn-foot">{ho_line}<br>{branch_line}</div></div>',
+    unsafe_allow_html=True,
 )
+
+try:
+    png = render_update_png(kpis, ho_line, branch_line)
+except Exception as e:
+    png = None
+    st.warning(f"Image build issue: {e}")
+
+c1, c2 = st.columns(2)
+with c1:
+    if png:
+        st.download_button(
+            "🖼️ Image download (WhatsApp / mail ke liye)",
+            data=png,
+            file_name=f"XTRANET_UPDATE_{ref_day}.png",
+            mime="image/png",
+            use_container_width=True,
+        )
+        st.image(png, caption="Preview — yahi image download hogi", use_container_width=True)
 
 st.markdown("---")
 tabs = st.tabs([
     f"Open ({dlabel})",
     "Old open",
     f"Raised {dlabel}",
-    f"Closed {dlabel}",
     "Call on Hold",
     "Old resolved",
     "Same-day resolved",
@@ -201,25 +294,27 @@ with tabs[1]:
 with tabs[2]:
     table(today_raised)
 with tabs[3]:
-    table(closed_on_day)
-with tabs[4]:
     table(call_hold)
-with tabs[5]:
+with tabs[4]:
     table(old_resolved)
-with tabs[6]:
+with tabs[5]:
     table(same_day_resolved)
-with tabs[7]:
+with tabs[6]:
     table(celerity_open)
-with tabs[8]:
+with tabs[7]:
     table(hicom_open)
 
 sum_df = pd.DataFrame([(a, b) for a, b, _ in kpis], columns=["Metric", "Count"])
+sum_df.loc[len(sum_df)] = ["HO Open (manual)", int(ho_open)]
+sum_df.loc[len(sum_df)] = ["Branch Open", int(branch_sites)]
+sum_df.loc[len(sum_df)] = ["Backup running (manual)", int(backup_n)]
+sum_df.loc[len(sum_df)] = ["Branch down (no backup)", int(down_n)]
 buf = BytesIO()
 with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
     sum_df.to_excel(w, index=False, sheet_name="Snapshot")
     for name, df in [
         ("Open", open_now), ("Old_Open", old_open), ("Raised", today_raised),
-        ("Closed", closed_on_day), ("Call_On_Hold", call_hold),
+        ("Call_On_Hold", call_hold),
         ("Old_Resolved", old_resolved), ("Same_Day_Resolved", same_day_resolved),
         ("Celerity_Open", celerity_open), ("Hicom_Open", hicom_open),
     ]:
@@ -228,7 +323,7 @@ with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
             df[cols].to_excel(w, index=False, sheet_name=name[:31])
 
 st.download_button(
-    f"📥 Download VPN Update {dlabel}",
+    f"📥 Excel VPN Update {dlabel}",
     data=buf.getvalue(),
     file_name=f"XTRANET_VPN_Update_{ref_day}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
