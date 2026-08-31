@@ -20,17 +20,19 @@ ensure_ready()
 
 
 def classify_from_comment(text):
-    """Read last enclosure. Others/Third Party tickets split here. One ticket = one bucket."""
+    """Vendor + migration + feasibility = one bucket: Vendor Change."""
     t = str(text or "").lower()
-    t = t.replace("close_enclosure", " ").replace("::", " ")
-    if "not feasible" in t or "technically not feasible" in t or "rolled back by isp" in t:
-        return "NOT Feasible for service"
-    if (
-        "alternate service provider" in t
-        or "provisioned on alternate" in t
-        or ("existing operator" in t and "not stable" in t)
-        or ("link not stable" in t and "alternate" in t)
-    ):
+    t = t.replace("close_enclosure", " ").replace("::", " ").replace("/", " ")
+    vendor_keys = [
+        "vendor change", "vendor changed", "new vendor",
+        "alternate service provider", "provisioned on alternate",
+        "existing operator", "link not stable",
+        "not feasible", "technically not feasible", "rolled back by isp",
+        "feasibility", "feasibl",
+        "migration", "migrat", "link migration", "media change",
+        "isp change", "change of isp",
+    ]
+    if any(k in t for k in vendor_keys):
         return "Vendor Change"
     if (
         "post rebooting onu" in t
@@ -38,7 +40,10 @@ def classify_from_comment(text):
         or ("reboot" in t and "onu" in t and ("came live" in t or "working fine" in t))
     ):
         return "ONU/Media converter/ZTE modem Rebooted"
-    return detect_category(text)
+    cat = detect_category(text)
+    if cat in ("NOT Feasible for service", "Vendor Change", "Migration", "Feasibility"):
+        return "Vendor Change"
+    return cat
 
 
 def unique_cols(cols, available):
@@ -76,6 +81,11 @@ remark_src = work[remark_col] if remark_col else pd.Series("", index=work.index)
 if isinstance(remark_src, pd.DataFrame):
     remark_src = remark_src.iloc[:, 0]
 work["outage_class"] = remark_src.apply(classify_from_comment)
+work["outage_class"] = work["outage_class"].replace({
+    "NOT Feasible for service": "Vendor Change",
+    "Migration": "Vendor Change",
+    "Feasibility": "Vendor Change",
+})
 
 partner = st.radio("ISP (sirf selected ka report)", ["HCIN", "ONEOTT"], horizontal=True)
 
@@ -162,20 +172,19 @@ else:
     cls.loc[len(cls)] = ["TOTAL", int(cls["Count"].sum()), 100.0]
     st.dataframe(cls, use_container_width=True, hide_index=True)
 
-    specials = ["NOT Feasible for service", "Vendor Change", "ONU/Media converter/ZTE modem Rebooted"]
-    s1, s2, s3 = st.columns(3)
-    s1.metric("NOT Feasible", int((view["outage_class"] == specials[0]).sum()))
-    s2.metric("Vendor Change", int((view["outage_class"] == specials[1]).sum()))
-    s3.metric("Device Rebooted", int((view["outage_class"] == specials[2]).sum()))
+    specials = ["Vendor Change", "ONU/Media converter/ZTE modem Rebooted"]
+    s1, s2 = st.columns(2)
+    s1.metric("Vendor Change (vendor + migration + feasibility)", int((view["outage_class"] == "Vendor Change").sum()))
+    s2.metric("Device Rebooted", int((view["outage_class"] == specials[1]).sum()))
 
-    st.markdown("#### Others / Third Party se nikaale tickets (comment se)")
+    st.markdown("#### Vendor Change tickets (comment se — vendor / migration / not feasible)")
     split = view[view["outage_class"].isin(specials)].copy()
     show_s = unique_cols(
         ["ticket_id", "site_code", "state", "outage_class", remark_col or "reason", "submitted_time"],
         split.columns,
     )
     if split.empty:
-        st.caption("Is date range mein ye 3 remark nahi mile.")
+        st.caption("Is date range mein ye remark nahi mile.")
     else:
         st.dataframe(split[show_s].sort_values("outage_class"), use_container_width=True, height=280)
 
@@ -335,7 +344,7 @@ else:
         }).to_excel(w, index=False, sheet_name="Cover")
         cls.to_excel(w, index=False, sheet_name="Outage_Class")
         if not split.empty and show_s:
-            split[show_s].to_excel(w, index=False, sheet_name="Others_Split")
+            split[show_s].to_excel(w, index=False, sheet_name="Vendor_Change")
         daily.to_excel(w, index=False, sheet_name="Daily")
         if not stt.empty:
             stt.to_excel(w, index=False, sheet_name="State")
