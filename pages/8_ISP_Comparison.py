@@ -18,6 +18,29 @@ st.title("⚖️ ISP Report — HCIN / ONEOTT")
 st.caption("Date range • HCIN ya OTT • Last remark se category • Repeat 3M/6M • Excel + PPT")
 ensure_ready()
 
+
+def classify_from_comment(text):
+    """Read last enclosure. Others/Third Party tickets split here. One ticket = one bucket."""
+    t = str(text or "").lower()
+    t = t.replace("close_enclosure", " ").replace("::", " ")
+    if "not feasible" in t or "technically not feasible" in t or "rolled back by isp" in t:
+        return "NOT Feasible for service"
+    if (
+        "alternate service provider" in t
+        or "provisioned on alternate" in t
+        or ("existing operator" in t and "not stable" in t)
+        or "link not stable" in t and "alternate" in t
+    ):
+        return "Vendor Change"
+    if (
+        "post rebooting onu" in t
+        or "rebooting onu" in t
+        or ("reboot" in t and "onu" in t and ("came live" in t or "working fine" in t))
+    ):
+        return "ONU/Media converter/ZTE modem Rebooted"
+    return detect_category(text)
+
+
 closed_df = st.session_state.get("closed_df")
 open_df = st.session_state.get("open_df")
 raw_df = st.session_state.get("raw_tickets_df")
@@ -35,8 +58,14 @@ if "submitted_time" in work.columns:
 if "resolved_time" in work.columns:
     work["resolved_time"] = pd.to_datetime(work["resolved_time"], errors="coerce")
 
-remark_src = work["reason"] if "reason" in work.columns else pd.Series("", index=work.index)
-work["outage_class"] = remark_src.apply(detect_category)
+# Prefer last remark; fallback other comment-like cols
+remark_col = None
+for c in ["reason", "reason_clean", "Last Enclosure Comment(Active)", "Remark"]:
+    if c in work.columns:
+        remark_col = c
+        break
+remark_src = work[remark_col] if remark_col else pd.Series("", index=work.index)
+work["outage_class"] = remark_src.apply(classify_from_comment)
 
 partner = st.radio("ISP (sirf selected ka report)", ["HCIN", "ONEOTT"], horizontal=True)
 
@@ -121,6 +150,20 @@ else:
     cls.loc[len(cls)] = ["TOTAL", int(cls["Count"].sum()), 100.0]
     st.dataframe(cls, use_container_width=True, hide_index=True)
 
+    specials = ["NOT Feasible for service", "Vendor Change", "ONU/Media converter/ZTE modem Rebooted"]
+    s1, s2, s3 = st.columns(3)
+    s1.metric("NOT Feasible", int((view["outage_class"] == specials[0]).sum()))
+    s2.metric("Vendor Change", int((view["outage_class"] == specials[1]).sum()))
+    s3.metric("Device Rebooted", int((view["outage_class"] == specials[2]).sum()))
+
+    st.markdown("#### Others / Third Party se nikaale tickets (comment se)")
+    split = view[view["outage_class"].isin(specials)].copy()
+    if split.empty:
+        st.caption("Is date range mein ye 3 remark nahi mile.")
+    else:
+        show_s = [c for c in ["ticket_id", "site_code", "state", "outage_class", remark_col or "reason", "submitted_time"] if c in split.columns]
+        st.dataframe(split[show_s].sort_values("outage_class"), use_container_width=True, height=280)
+
     chart = cls[cls["Outage Category"] != "TOTAL"]
     g1, g2 = st.columns(2)
     with g1:
@@ -159,7 +202,7 @@ else:
         site = view.groupby("site_code").agg(
             tickets=("ticket_id", "count") if "ticket_id" in view.columns else ("site_code", "count"),
             state=("state", "first") if "state" in view.columns else ("site_code", "first"),
-            last_remark=("reason", "last") if "reason" in view.columns else ("site_code", "first"),
+            last_remark=(remark_col, "last") if remark_col else ("site_code", "first"),
             category=("outage_class", lambda s: ", ".join(sorted(set(s.astype(str))))),
         ).reset_index().sort_values("tickets", ascending=False)
         st.dataframe(site, use_container_width=True, height=360)
@@ -167,7 +210,6 @@ else:
         site = pd.DataFrame()
         st.info("site_code missing")
 
-    # ---------- REPEAT 3M / 6M ----------
     st.subheader("🔁 Repeat sites — is period ke sites ka 3 month / 6 month history")
     st.caption("Jo site is selected period mein down gayi, uska 3M aur 6M mein kitni baar down + har ticket ka reason aur downtime")
 
@@ -207,7 +249,7 @@ else:
 
             def pack(sdf):
                 reasons = sdf["outage_class"].dropna().astype(str).tolist() if "outage_class" in sdf.columns else []
-                remarks = sdf["reason"].dropna().astype(str).str.slice(0, 80).tolist() if "reason" in sdf.columns else []
+                remarks = sdf[remark_col].dropna().astype(str).str.slice(0, 80).tolist() if remark_col and remark_col in sdf.columns else []
                 hrs = [dt_hrs(r) for _, r in sdf.iterrows()]
                 hrs = [x for x in hrs if x is not None]
                 return {
@@ -215,7 +257,6 @@ else:
                     "reasons": " | ".join(sorted(set(reasons))) if reasons else "",
                     "remarks": " | ".join(remarks[:6]),
                     "total_hrs": round(sum(hrs), 2) if hrs else 0,
-                    "ticket_hrs": ", ".join(str(x) for x in hrs),
                 }
 
             p3, p6, pn = pack(s3), pack(s6), pack(s_now)
@@ -239,7 +280,7 @@ else:
                     "Submitted": r.get("submitted_time", ""),
                     "Resolved": r.get("resolved_time", ""),
                     "Category": r.get("outage_class", ""),
-                    "Last Remark": str(r.get("reason", "") or "")[:160],
+                    "Last Remark": str(r.get(remark_col, r.get("reason", "")) or "")[:160],
                     "Downtime Hrs": dt_hrs(r),
                 })
 
@@ -262,8 +303,8 @@ else:
     st.subheader("📋 Ticket-wise detail (selected period)")
     show_cols = [c for c in [
         "ticket_id", "site_code", "state", "city", "submitted_time", "resolved_time",
-        "status", "owner", "isp", "outage_class", "reason", "down_time_min"
-    ] if c in view.columns]
+        "status", "owner", "isp", "outage_class", remark_col, "reason", "down_time_min"
+    ] if c and c in view.columns]
     detail = view[show_cols].sort_values(time_col, ascending=False)
     st.dataframe(detail, use_container_width=True, height=420)
 
@@ -274,6 +315,8 @@ else:
             "Value": [partner, str(start_day), str(end_day), date_on, total, len(open_view)],
         }).to_excel(w, index=False, sheet_name="Cover")
         cls.to_excel(w, index=False, sheet_name="Outage_Class")
+        if not split.empty:
+            split[show_s].to_excel(w, index=False, sheet_name="Others_Split")
         daily.to_excel(w, index=False, sheet_name="Daily")
         if not stt.empty:
             stt.to_excel(w, index=False, sheet_name="State")
