@@ -29,7 +29,7 @@ def classify_from_comment(text):
         "alternate service provider" in t
         or "provisioned on alternate" in t
         or ("existing operator" in t and "not stable" in t)
-        or "link not stable" in t and "alternate" in t
+        or ("link not stable" in t and "alternate" in t)
     ):
         return "Vendor Change"
     if (
@@ -39,6 +39,14 @@ def classify_from_comment(text):
     ):
         return "ONU/Media converter/ZTE modem Rebooted"
     return detect_category(text)
+
+
+def unique_cols(cols, available):
+    out = []
+    for c in cols:
+        if c and c in available and c not in out:
+            out.append(c)
+    return out
 
 
 closed_df = st.session_state.get("closed_df")
@@ -53,18 +61,20 @@ if closed_df is None or closed_df.empty:
         st.stop()
 
 work = closed_df.copy()
+work = work.loc[:, ~work.columns.duplicated()].copy()
 if "submitted_time" in work.columns:
     work["submitted_time"] = pd.to_datetime(work["submitted_time"], errors="coerce")
 if "resolved_time" in work.columns:
     work["resolved_time"] = pd.to_datetime(work["resolved_time"], errors="coerce")
 
-# Prefer last remark; fallback other comment-like cols
 remark_col = None
 for c in ["reason", "reason_clean", "Last Enclosure Comment(Active)", "Remark"]:
     if c in work.columns:
         remark_col = c
         break
 remark_src = work[remark_col] if remark_col else pd.Series("", index=work.index)
+if isinstance(remark_src, pd.DataFrame):
+    remark_src = remark_src.iloc[:, 0]
 work["outage_class"] = remark_src.apply(classify_from_comment)
 
 partner = st.radio("ISP (sirf selected ka report)", ["HCIN", "ONEOTT"], horizontal=True)
@@ -126,6 +136,8 @@ st.markdown(
 
 rep_sum = pd.DataFrame()
 rep_detail = pd.DataFrame()
+split = pd.DataFrame()
+show_s = []
 
 if view.empty:
     st.info("Is date range / ISP pe closed ticket nahi mila.")
@@ -158,10 +170,13 @@ else:
 
     st.markdown("#### Others / Third Party se nikaale tickets (comment se)")
     split = view[view["outage_class"].isin(specials)].copy()
+    show_s = unique_cols(
+        ["ticket_id", "site_code", "state", "outage_class", remark_col or "reason", "submitted_time"],
+        split.columns,
+    )
     if split.empty:
         st.caption("Is date range mein ye 3 remark nahi mile.")
     else:
-        show_s = [c for c in ["ticket_id", "site_code", "state", "outage_class", remark_col or "reason", "submitted_time"] if c in split.columns]
         st.dataframe(split[show_s].sort_values("outage_class"), use_container_width=True, height=280)
 
     chart = cls[cls["Outage Category"] != "TOTAL"]
@@ -301,11 +316,15 @@ else:
                 st.caption(f"Total downtime (listed tickets): **{round(one['Downtime Hrs'].fillna(0).sum(), 2)} hrs**")
 
     st.subheader("📋 Ticket-wise detail (selected period)")
-    show_cols = [c for c in [
-        "ticket_id", "site_code", "state", "city", "submitted_time", "resolved_time",
-        "status", "owner", "isp", "outage_class", remark_col, "reason", "down_time_min"
-    ] if c and c in view.columns]
-    detail = view[show_cols].sort_values(time_col, ascending=False)
+    show_cols = unique_cols(
+        [
+            "ticket_id", "site_code", "state", "city", "submitted_time", "resolved_time",
+            "status", "owner", "isp", "outage_class", remark_col, "reason", "down_time_min",
+        ],
+        view.columns,
+    )
+    detail = view.loc[:, show_cols].copy()
+    detail = detail.loc[:, ~detail.columns.duplicated()]
     st.dataframe(detail, use_container_width=True, height=420)
 
     buf = BytesIO()
@@ -315,7 +334,7 @@ else:
             "Value": [partner, str(start_day), str(end_day), date_on, total, len(open_view)],
         }).to_excel(w, index=False, sheet_name="Cover")
         cls.to_excel(w, index=False, sheet_name="Outage_Class")
-        if not split.empty:
+        if not split.empty and show_s:
             split[show_s].to_excel(w, index=False, sheet_name="Others_Split")
         daily.to_excel(w, index=False, sheet_name="Daily")
         if not stt.empty:
@@ -369,5 +388,8 @@ st.subheader("Current open (selected ISP)")
 if open_view is None or open_view.empty:
     st.info("Is ISP pe current open nahi.")
 else:
-    oc = [c for c in ["ticket_id", "site_code", "status", "state", "submitted_time", "open_hours", "reason"] if c in open_view.columns]
+    oc = unique_cols(
+        ["ticket_id", "site_code", "status", "state", "submitted_time", "open_hours", "reason"],
+        open_view.columns,
+    )
     st.dataframe(open_view[oc], use_container_width=True, height=280)
