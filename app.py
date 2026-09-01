@@ -8,7 +8,7 @@ st.set_page_config(
     page_title="XTRNATE Project | NOC Command Center",
     page_icon="📡",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 st.markdown("""
@@ -48,93 +48,51 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-if 'selected_isp' not in st.session_state:
+if "selected_isp" not in st.session_state:
     st.session_state.selected_isp = "ALL"
-if 'closed_df' not in st.session_state:
+if "closed_df" not in st.session_state:
     st.session_state.closed_df = None
-if 'open_df' not in st.session_state:
+if "open_df" not in st.session_state:
     st.session_state.open_df = None
-if 'site_master' not in st.session_state:
+if "site_master" not in st.session_state:
     st.session_state.site_master = None
 
-from utils.auto_load import auto_load_tickets
-from utils.site_search import render_site_history_panel
-from utils.bootstrap import show_last_update
+home = st.Page("home_page.py", title="Home", icon="📡", default=True)
 
-if st.session_state.closed_df is None:
-    with st.spinner("📡 Data auto-fetch ho raha hai (Google Sheet)..."):
-        ok, msg = auto_load_tickets()
-    if ok and msg != "already_loaded":
-        st.toast(f"✅ Auto-loaded: {msg}", icon="📡")
-    elif not ok:
-        st.sidebar.error(f"Auto-load fail: {msg}")
+tickets = [
+    st.Page("pages/1_Dashboard.py", title="Dashboard", icon="📊"),
+    st.Page("pages/3_Closed_Analysis.py", title="Closed Analysis", icon="✅"),
+    st.Page("pages/4_Open_Escalation.py", title="Open Escalation", icon="🚨"),
+    st.Page("pages/7_Open_Calls_Dashboard.py", title="Open Calls", icon="📞"),
+    st.Page("pages/6_Repeat_Analysis.py", title="Repeat Analysis", icon="🔁"),
+    st.Page("pages/8_ISP_Comparison.py", title="ISP Comparison", icon="⚖️"),
+]
+sim_data = [
+    st.Page("pages/19_SIM_Inventory.py", title="SIM Inventory", icon="📱"),
+    st.Page("pages/18_SIM_Backup_Usage.py", title="SIM Data Usage", icon="📶"),
+    st.Page("pages/13_Circuit_ID.py", title="Circuit ID", icon="🔗"),
+]
+reports = [
+    st.Page("pages/12_Partner_Report.py", title="Partner Report", icon="📄"),
+    st.Page("pages/11_Monthly_SLA_Report.py", title="Monthly SLA", icon="📅"),
+    st.Page("pages/9_Vendor_Performance.py", title="Vendor Performance", icon="📈"),
+    st.Page("pages/10_Penalty_SLA.py", title="Penalty SLA", icon="⚠️"),
+    st.Page("pages/16_Conclusion.py", title="Conclusion PPT", icon="📚"),
+    st.Page("pages/15_Pending_Mail.py", title="Pending Mail", icon="✉️"),
+    st.Page("pages/14_VPN_Update.py", title="VPN Update", icon="📡"),
+    st.Page("pages/17_Holiday_Downtime.py", title="Holiday Downtime", icon="🎆"),
+]
+tools = [
+    st.Page("pages/0_Site_Search.py", title="Site Search", icon="🔍"),
+    st.Page("pages/2_Upload_Data.py", title="Upload Data", icon="📤"),
+    st.Page("pages/5_Escalation_Matrix.py", title="Escalation Matrix", icon="📋"),
+]
 
-show_last_update()
-
-st.markdown("""
-<div class="main-header">
-    <h1>📡 XTRNATE Project</h1>
-    <p>NOC Command Center • Auto data fetch • Site Search • SLA & Penalty</p>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown('<div class="search-card">', unsafe_allow_html=True)
-st.markdown("**🔍 Site Code Quick Search** — type code → full down history + reasons")
-sc1, sc2 = st.columns([5, 1])
-with sc1:
-    site_q = st.text_input(
-        "Site Code",
-        placeholder="e.g. XTNNTL358",
-        key="home_site_search",
-        label_visibility="collapsed",
-    )
-with sc2:
-    search_btn = st.button("Search", type="primary", use_container_width=True, key="home_search_btn")
-st.markdown('</div>', unsafe_allow_html=True)
-
-if site_q and (search_btn or site_q):
-    render_site_history_panel(site_q.strip().upper())
-    st.markdown("---")
-
-st.markdown("### ISP Filter (optional)")
-st.caption("Default = ALL. Specific partner chahiye to select karo.")
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("🏢 HCIN", use_container_width=True,
-                 type="primary" if st.session_state.selected_isp == "HCIN" else "secondary"):
-        st.session_state.selected_isp = "HCIN"
-        st.rerun()
-with col2:
-    if st.button("🌐 ONEOTT", use_container_width=True,
-                 type="primary" if st.session_state.selected_isp == "ONEOTT" else "secondary"):
-        st.session_state.selected_isp = "ONEOTT"
-        st.rerun()
-with col3:
-    if st.button("📊 ALL", use_container_width=True,
-                 type="primary" if st.session_state.selected_isp == "ALL" else "secondary"):
-        st.session_state.selected_isp = "ALL"
-        st.rerun()
-
-st.success(f"**Active:** {st.session_state.selected_isp}  |  Data loaded automatically")
-
-if st.button("🔄 Force Refresh Google Sheet"):
-    st.cache_data.clear()
-    ok, msg = auto_load_tickets(force=True)
-    if ok:
-        st.success(f"Refreshed: {msg}")
-        st.rerun()
-    else:
-        st.error(msg)
-
-if st.session_state.closed_df is not None or st.session_state.open_df is not None:
-    st.markdown("### Live Status")
-    c1, c2, c3 = st.columns(3)
-    closed_count = len(st.session_state.closed_df) if st.session_state.closed_df is not None else 0
-    open_count = len(st.session_state.open_df) if st.session_state.open_df is not None else 0
-    c1.metric("Closed", closed_count)
-    c2.metric("Open", open_count)
-    c3.metric("ISP", st.session_state.selected_isp)
-
-st.markdown("---")
-st.caption("Sidebar se Dashboard, Penalty, Monthly SLA, Repeat Analysis open karo — data pehle se loaded hai.")
+pg = st.navigation({
+    "Home": [home],
+    "Tickets": tickets,
+    "SIM & Data": sim_data,
+    "Reports": reports,
+    "Tools": tools,
+})
+pg.run()
