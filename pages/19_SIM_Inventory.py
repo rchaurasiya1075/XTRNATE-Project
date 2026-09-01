@@ -9,14 +9,14 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import show_last_update
 from utils.google_sheets import load_sheet_as_csv
 
-SHEET_ID = "1oWAJfe5ARZniQdScKArcH8DYqhamQXFC"
-GID = "1796870727"
+SHEET_ID = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
+GID = "1240520075"
 
 st.set_page_config(page_title="SIM Inventory | XTRNATE", page_icon="📱", layout="wide")
 show_last_update()
 
 st.title("📱 SIM Inventory")
-st.caption("Site code search • SIM status / Telco / plan limit • IP, MDN, Asset, Remarks")
+st.caption("Same Xtranet sheet • Site / MDN / IP search • Status, Telco, plan limit")
 
 
 def uniquify_columns(df):
@@ -53,28 +53,17 @@ def load_inventory():
     return uniquify_columns(df)
 
 
-up = st.file_uploader("Agar sheet private ho to Excel yahan upload karo", type=["xlsx", "xls", "csv"])
 err = None
 inv = None
-if up is not None:
-    try:
-        if up.name.lower().endswith("csv"):
-            inv = uniquify_columns(pd.read_csv(up))
-        else:
-            inv = uniquify_columns(pd.read_excel(up))
-    except Exception as e:
-        err = str(e)
-else:
-    try:
-        inv = load_inventory()
-    except Exception as e:
-        err = str(e)
+try:
+    inv = load_inventory()
+except Exception as e:
+    err = str(e)
 
 if inv is None or inv.empty:
     st.warning(
-        "SIM sheet load nahi hui. Sheet ko **Anyone with the link can view** share karo, "
-        "ya upar Excel upload karo.\n\n"
-        f"Link: https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit?gid={GID}"
+        "SIM inventory tab load nahi hui.\n\n"
+        f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit?gid={GID}"
     )
     if err:
         st.caption(f"Error: {err}")
