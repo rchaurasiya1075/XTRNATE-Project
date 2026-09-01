@@ -71,6 +71,7 @@ sim_data = [
     st.Page("pages/19_SIM_Inventory.py", title="SIM Inventory", icon="📱"),
     st.Page("pages/18_SIM_Backup_Usage.py", title="SIM Data Usage", icon="📶"),
     st.Page("pages/13_Circuit_ID.py", title="Circuit ID", icon="🔗"),
+    st.Page("pages/21_LC_Master.py", title="LC Master", icon="📋"),
 ]
 reports = [
     st.Page("pages/12_Partner_Report.py", title="Partner Report", icon="📄"),
@@ -86,6 +87,7 @@ tools = [
     st.Page("pages/0_Site_Search.py", title="Site Search", icon="🔍"),
     st.Page("pages/2_Upload_Data.py", title="Upload Data", icon="📤"),
     st.Page("pages/5_Escalation_Matrix.py", title="Escalation Matrix", icon="📋"),
+    st.Page("pages/20_Vendor_Change.py", title="Vendor Change", icon="🔄"),
 ]
 
 pg = st.navigation({
