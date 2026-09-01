@@ -24,8 +24,8 @@ show_last_update()
 
 st.markdown("""
 <div class="main-header">
-    <h1>📡 XTRNATE Project</h1>
-    <p>NOC Command Center • Auto data fetch • Site Search • SLA & Penalty</p>
+    <h1>📡 XTRNATE Project :- R O H I T   C H A U R A S I Y A</h1>
+    <p>Hughes NOC • Xtranet Data • Site Search • SLA </p>
 </div>
 """, unsafe_allow_html=True)
 
