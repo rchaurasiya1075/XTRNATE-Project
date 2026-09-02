@@ -72,6 +72,7 @@ sim_data = [
     st.Page("pages/18_SIM_Backup_Usage.py", title="SIM Data Usage", icon="📶"),
     st.Page("pages/13_Circuit_ID.py", title="Circuit ID", icon="🔗"),
     st.Page("pages/21_LC_Master.py", title="LC Master", icon="📋"),
+    st.Page("pages/22_Last_Mile_Update.py", title="Last Mile Update", icon="📍"),
 ]
 reports = [
     st.Page("pages/12_Partner_Report.py", title="Partner Report", icon="📄"),
