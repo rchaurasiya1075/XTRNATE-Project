@@ -37,7 +37,6 @@ LC_LOG_HEADERS = [
     "Source",
 ]
 
-# gid 658119379 — extra columns after Branch Person Contact (col 13)
 TARGET_EXTRA = {
     14: "New LC Name",
     15: "New LC Contact",
@@ -96,6 +95,28 @@ def _ws_by_gid(ss, gid):
         raise RuntimeError(f"Worksheet gid={gid} nahi mili")
 
 
+def test_sheet_write():
+    """Open Xtranet sheet and list tabs. Returns dict ok/error/tabs/email."""
+    out = {"ok": False, "email": "", "tabs": [], "error": ""}
+    try:
+        out["email"] = sa_email()
+        gc, email = _client()
+        out["email"] = email
+        ss = gc.open_by_key(XTRANET_SHEET_ID)
+        out["title"] = ss.title
+        out["tabs"] = [f"{w.title} (gid={w.id})" for w in ss.worksheets()]
+        log = _ensure_log_tab(ss)
+        log.append_row(
+            [_now(), "TEST", "", "", "connection-ok", "", "test"],
+            value_input_option="USER_ENTERED",
+        )
+        out["ok"] = True
+        out["log_tab"] = log.title
+    except Exception as e:
+        out["error"] = f"{type(e).__name__}: {e}"
+    return out
+
+
 def append_last_mile_log(row):
     gc, email = _client()
     ss = gc.open_by_key(MASTER_SHEET_ID)
@@ -142,7 +163,6 @@ def _ensure_log_tab(ss):
 
 
 def update_lc_excel(site, lc_name, lc_phone, handled_by="", source="auto"):
-    """Write LC onto Xtranet sheet 1ELusYn2... — new columns + LC_Updates tab."""
     gc, email = _client()
     ss = gc.open_by_key(XTRANET_SHEET_ID)
     site = str(site).strip().upper()
@@ -157,7 +177,6 @@ def update_lc_excel(site, lc_name, lc_phone, handled_by="", source="auto"):
     if trow:
         prev_name = target.cell(trow, 12).value or ""
         prev_phone = target.cell(trow, 13).value or ""
-        # L-S: live name/phone, New LC Name/Contact, Prev, Updated At, Source
         target.update(
             f"L{trow}:S{trow}",
             [[name, phone, name, phone, prev_name, prev_phone, ts, source]],
