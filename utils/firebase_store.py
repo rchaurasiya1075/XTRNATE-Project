@@ -1,4 +1,4 @@
-"""Firestore helper. Prefers one-shot FIREBASE_SA_JSON secret."""
+"""Firestore helper module for Streamlit & Firebase Admin SDK."""
 import json
 import re
 from datetime import datetime
@@ -8,6 +8,7 @@ IST = ZoneInfo("Asia/Kolkata")
 PROJECT_ID = "xtranet-d7dca"
 _app = None
 
+# Standard PEM Block Regex
 PEM_BLOCK = re.compile(
     r"-----BEGIN ([A-Z ]*PRIVATE KEY)-----([^-]*)-----END \1-----",
     re.DOTALL,
@@ -15,15 +16,15 @@ PEM_BLOCK = re.compile(
 
 
 def _now():
+    """Returns current date time string in IST format."""
     return datetime.now(IST).strftime("%d-%b-%Y %I:%M:%S %p IST")
 
 
 def firebase_ready():
+    """Check if Firebase secret keys are present in Streamlit secrets."""
     try:
         import streamlit as st
-        if "FIREBASE_SA_JSON" in st.secrets:
-            return True
-        if "firebase_sa_json" in st.secrets:
+        if "FIREBASE_SA_JSON" in st.secrets or "firebase_sa_json" in st.secrets:
             return True
         return "google_service_account" in st.secrets
     except Exception:
@@ -31,9 +32,15 @@ def firebase_ready():
 
 
 def _fix_private_key(raw):
-    key = str(raw or "")
+    """Normalizes and reconstructs standard PEM RSA private key string."""
+    key = str(raw or "").strip()
+    
+    # Strip quotes & clean escaped newlines
+    key = key.strip('"').strip("'")
     key = key.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
     key = key.replace("BEGIN_PRIVATE_KEY", "BEGIN PRIVATE KEY").replace("END_PRIVATE_KEY", "END PRIVATE KEY")
+    
+    # Extract inner base64 body
     m = PEM_BLOCK.search(key)
     if not m:
         m2 = re.search(
@@ -50,17 +57,24 @@ def _fix_private_key(raw):
     else:
         label = (m.group(1) or "PRIVATE KEY").strip()
         body = m.group(2)
-    body = re.sub(r"[^A-Za-z0-9+/=]", "", body)
-    if len(body) < 80:
+
+    # Clean non-Base64 characters
+    clean_base64 = re.sub(r"[^A-Za-z0-9+/=]", "", body)
+    
+    if len(clean_base64) < 500:
         raise ValueError(
-            "private_key toot gayi (PEM body short). Secrets mein JSON file ka "
-            "private_key field poora paste karo."
+            "Private key corrupt ya truncated hai. Please check secrets configuration."
         )
-    wrapped = "\n".join(body[i : i + 64] for i in range(0, len(body), 64))
-    return f"-----BEGIN {label}-----\n{wrapped}\n-----END {label}-----\n"
+
+    # Wrap Base64 body to standard 64-character PEM lines
+    wrapped_lines = [clean_base64[i : i + 64] for i in range(0, len(clean_base64), 64)]
+    pem_body = "\n".join(wrapped_lines)
+    
+    return f"-----BEGIN {label}-----\n{pem_body}\n-----END {label}-----\n"
 
 
 def _escape_ctrl_in_strings(text):
+    """Escapes control characters in JSON strings to prevent JSONDecodeError."""
     out = []
     in_str = False
     esc = False
@@ -97,6 +111,7 @@ def _escape_ctrl_in_strings(text):
 
 
 def _parse_sa_json(raw):
+    """Parses raw JSON payload into Python dictionary."""
     if isinstance(raw, dict):
         return dict(raw)
     text = str(raw or "").strip()
@@ -113,6 +128,7 @@ def _parse_sa_json(raw):
 
 
 def _load_sa_info():
+    """Loads service account credentials safely from Streamlit secrets."""
     import streamlit as st
 
     raw = None
@@ -120,27 +136,36 @@ def _load_sa_info():
         if name in st.secrets:
             raw = st.secrets[name]
             break
+            
     if raw is not None:
         info = _parse_sa_json(raw)
-    else:
+    elif "google_service_account" in st.secrets:
         info = dict(st.secrets["google_service_account"])
+    else:
+        raise KeyError("Secrets me Firebase service account credentials nahi mile.")
+
     if not isinstance(info, dict):
-        raise ValueError("Service account JSON object nahi bana.")
+        raise ValueError("Service account object dict format mein match nahi hua.")
+
     info = {str(k): info[k] for k in info}
+    
     if "private_key" not in info:
-        raise ValueError("JSON mein private_key field nahi hai.")
+        raise ValueError("JSON mein private_key field missing hai.")
+
     info["private_key"] = _fix_private_key(info["private_key"])
     info["type"] = info.get("type") or "service_account"
     return info
 
 
 def get_db():
+    """Initializes Firebase Admin App and returns Firestore DB Client instance."""
     global _app
     import firebase_admin
     from firebase_admin import credentials, firestore
 
     if not firebase_ready():
-        raise RuntimeError("Firebase secrets missing.")
+        raise RuntimeError("Firebase secrets missing in Streamlit.")
+        
     if not firebase_admin._apps:
         info = _load_sa_info()
         try:
@@ -153,33 +178,41 @@ def get_db():
                 "Secrets box poora saaf karke sirf FIREBASE_SA_JSON = \"\"\" {json} \"\"\" paste karo. "
                 f"Detail: {e}"
             ) from e
+            
         pid = info.get("project_id") or PROJECT_ID
         _app = firebase_admin.initialize_app(cred, {"projectId": pid})
+        
     return firestore.client()
 
 
 def upsert(collection, doc_id, data):
+    """Inserts or updates a document in a Firestore collection."""
     db = get_db()
     payload = dict(data)
     payload["updated_at"] = _now()
-    if "created_at" not in payload:
-        existing = db.collection(collection).document(str(doc_id)).get()
-        if existing.exists:
-            prev = existing.to_dict() or {}
-            payload["created_at"] = prev.get("created_at", _now())
-        else:
-            payload["created_at"] = _now()
-    db.collection(collection).document(str(doc_id)).set(payload, merge=True)
+    
+    doc_ref = db.collection(collection).document(str(doc_id))
+    existing = doc_ref.get()
+    
+    if existing.exists:
+        prev = existing.to_dict() or {}
+        payload["created_at"] = prev.get("created_at", _now())
+    else:
+        payload["created_at"] = _now()
+        
+    doc_ref.set(payload, merge=True)
     return payload
 
 
 def get_one(collection, doc_id):
+    """Fetches a single document by ID from a Firestore collection."""
     db = get_db()
     snap = db.collection(collection).document(str(doc_id)).get()
     return snap.to_dict() if snap.exists else None
 
 
 def list_all(collection, limit=2000):
+    """Lists all documents from a specified Firestore collection."""
     db = get_db()
     rows = []
     for snap in db.collection(collection).limit(limit).stream():
@@ -190,4 +223,5 @@ def list_all(collection, limit=2000):
 
 
 def delete_one(collection, doc_id):
+    """Deletes a document by ID from a Firestore collection."""
     get_db().collection(collection).document(str(doc_id)).delete()
