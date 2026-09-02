@@ -23,7 +23,7 @@ show_last_update()
 
 st.title("LC Master")
 st.caption(
-    "Purana LC (gid 401145054) • naya pending-mail number alag ho to Excel update • same number skip"
+    "Naya pending-mail number aate hi purana hata ke Excel mein automatic update + Prev columns"
 )
 
 
@@ -114,6 +114,31 @@ def load_target():
     return df
 
 
+def apply_new(rows, src_label="auto"):
+    ok, fail = 0, []
+    for _, r in rows.iterrows():
+        site = clean(r["site_code"])
+        name = clean(r["mail_name"]) or clean(r.get("lc_name"))
+        phone = clean(r["mail_phone"])
+        if not site or not phone:
+            continue
+        try:
+            update_lc_excel(site, name, phone, clean(r.get("handled_by")), source=src_label)
+            if firebase_ready():
+                upsert("site_lc", site, {
+                    "site_code": site,
+                    "lc_name": name,
+                    "lc_number": phone,
+                    "old_lc_name": clean(r.get("lc_name")),
+                    "old_lc_number": clean(r.get("lc_phone")),
+                    "source": src_label,
+                })
+            ok += 1
+        except Exception as e:
+            fail.append(f"{site}: {e}")
+    return ok, fail
+
+
 try:
     old = load_old_lc()
 except Exception as e:
@@ -133,11 +158,15 @@ if st.button("Reload LC sheets"):
     load_old_lc.clear()
     load_pending_mail.clear()
     load_target.clear()
+    st.session_state.pop("lc_auto_sig", None)
     st.rerun()
 
 merged = old[["site_code", "lc_name", "lc_phone", "handled_by"]].copy()
-mail_s = mail[["site_code", "mail_name", "mail_phone"]] if not mail.empty else pd.DataFrame(columns=["site_code", "mail_name", "mail_phone"])
+mail_s = mail[["site_code", "mail_name", "mail_phone"]] if not mail.empty else pd.DataFrame(
+    columns=["site_code", "mail_name", "mail_phone"]
+)
 merged = merged.merge(mail_s, on="site_code", how="outer")
+
 
 def flag_row(r):
     o, n = clean(r.get("lc_phone")), clean(r.get("mail_phone"))
@@ -149,48 +178,49 @@ def flag_row(r):
         return "SAME — skip"
     return "NEW NUMBER"
 
+
 merged["status"] = merged.apply(flag_row, axis=1)
-new_only = merged[merged["status"].str.startswith("NEW")]
+new_only = merged[merged["status"].str.startswith("NEW")].copy()
 
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Old LC sites", len(old))
 k2.metric("Pending-mail sites", len(mail))
-k3.metric("New number (update)", len(new_only))
+k3.metric("New number (auto)", len(new_only))
 k4.metric("Same — skip", int((merged["status"] == "SAME — skip").sum()))
+
+st.info(
+    "Last mile data abhi nahi diya — jab doge tab New Last Mile columns fill honge. "
+    "LC ke liye Excel pe Prev LC Name / Prev LC Contact / LC Updated At columns add hote hain."
+)
+
+sig = tuple(sorted(new_only["site_code"].astype(str).tolist())) if not new_only.empty else ()
+if sig and st.session_state.get("lc_auto_sig") != sig:
+    with st.spinner("Naye LC numbers Excel pe automatic update..."):
+        ok, fail = apply_new(new_only, "pending_mail_auto")
+    st.session_state["lc_auto_sig"] = sig
+    if ok:
+        st.success(f"Automatic: {ok} sites ka purana LC hata ke naya number Excel + Firebase pe save.")
+        load_old_lc.clear()
+        load_target.clear()
+    if fail:
+        st.error("\n".join(fail[:8]))
+        try:
+            st.warning(
+                "Sheet write ke liye Editor share:\n"
+                f"{sa_email()}\nhttps://docs.google.com/spreadsheets/d/{XTRANET}"
+            )
+        except Exception:
+            pass
 
 st.subheader("New LC from Pending Mail (old se alag)")
 if new_only.empty:
-    st.success("Pending mail pe koi naya number nahi — sab same ya empty.")
+    st.success("Koi naya number nahi — same contacts skip.")
 else:
-    show_n = new_only[["site_code", "lc_name", "lc_phone", "mail_name", "mail_phone", "status"]]
-    st.dataframe(show_n, use_container_width=True, height=280)
-    if st.button("Excel mein sirf NEW numbers update karo", type="primary"):
-        ok, fail = 0, []
-        for _, r in new_only.iterrows():
-            site = clean(r["site_code"])
-            name = clean(r["mail_name"]) or clean(r["lc_name"])
-            phone = clean(r["mail_phone"])
-            try:
-                update_lc_excel(site, name, phone, clean(r.get("handled_by")))
-                if firebase_ready():
-                    upsert("site_lc", site, {
-                        "site_code": site,
-                        "lc_name": name,
-                        "lc_number": phone,
-                        "source": "pending_mail",
-                    })
-                ok += 1
-            except Exception as e:
-                fail.append(f"{site}: {e}")
-        st.success(f"{ok} sites Excel (gid 658119379 + LC tab) pe update.")
-        if fail:
-            st.error("\n".join(fail[:8]))
-            try:
-                st.info(f"Sheet ko Editor share karo: {sa_email()}")
-            except Exception:
-                pass
-        load_old_lc.clear()
-        load_target.clear()
+    st.dataframe(
+        new_only[["site_code", "lc_name", "lc_phone", "mail_name", "mail_phone", "status"]],
+        use_container_width=True,
+        height=280,
+    )
 
 st.markdown("---")
 st.subheader("Manual LC update (site code)")
@@ -198,7 +228,6 @@ q = st.text_input("Site code", placeholder="XTNFAT357").strip().upper()
 if q:
     o = old[old["site_code"] == q]
     m = mail[mail["site_code"] == q] if not mail.empty else mail
-    t = target[target["site_code"] == q] if not target.empty and "site_code" in target.columns else target
     old_name = clean(o.iloc[0]["lc_name"]) if not o.empty else ""
     old_ph = clean(o.iloc[0]["lc_phone"]) if not o.empty else ""
     mail_name = clean(m.iloc[0]["mail_name"]) if not m.empty else ""
@@ -206,14 +235,13 @@ if q:
     st.write(f"**Old LC:** {old_name} / {old_ph}")
     if mail_ph:
         if same_phone(old_ph, mail_ph):
-            st.info(f"Pending mail same number hai — skip: {mail_name} / {mail_ph}")
+            st.info(f"Pending mail same — skip: {mail_name} / {mail_ph}")
             default_name, default_ph = old_name, old_ph
         else:
-            st.warning(f"Pending mail NEW number: {mail_name} / {mail_ph}")
+            st.warning(f"Pending mail NEW: {mail_name} / {mail_ph}")
             default_name, default_ph = mail_name or old_name, mail_ph
     else:
         default_name, default_ph = old_name, old_ph
-        st.caption("Pending mail pe is site ka contact nahi.")
 
     fb = None
     if firebase_ready():
@@ -234,46 +262,36 @@ if q:
         if not new_name and not new_ph:
             st.warning("Name ya number dalo.")
         else:
-            fb_ok = sh_ok = False
-            sh_err = ""
             if firebase_ready():
                 try:
                     upsert("site_lc", q, {
                         "site_code": q,
                         "lc_name": new_name.strip(),
                         "lc_number": new_ph.strip(),
+                        "old_lc_name": old_name,
+                        "old_lc_number": old_ph,
                         "note": note.strip(),
                         "source": "manual",
                     })
-                    fb_ok = True
+                    st.success("Firebase save.")
                 except Exception as e:
                     st.error(f"Firebase: {e}")
             try:
-                how = update_lc_excel(q, new_name.strip(), new_ph.strip())
-                sh_ok = True
-                st.success(f"Excel update: target {how['target']} • LC tab {how['source']}")
+                how = update_lc_excel(q, new_name.strip(), new_ph.strip(), source="manual")
+                st.success(f"Excel: target {how['target']} • LC tab {how['source']} • Prev columns fill")
             except Exception as e:
-                sh_err = str(e)
-            if fb_ok:
-                st.success("Firebase save.")
-            if sh_err:
                 try:
                     mail_sa = sa_email()
                 except Exception:
                     mail_sa = "(service account)"
                 st.warning(
-                    "Sheet write fail. Xtranet sheet ko Editor share karo:\n"
-                    f"{mail_sa}\n"
-                    f"https://docs.google.com/spreadsheets/d/{XTRANET}\n{sh_err}"
+                    f"Sheet write fail. Editor share: {mail_sa}\n"
+                    f"https://docs.google.com/spreadsheets/d/{XTRANET}\n{e}"
                 )
 
 st.markdown("---")
-st.subheader("All LC (old sheet)")
-st.dataframe(
-    old[["site_code", "lc_name", "lc_phone", "handled_by"]],
-    use_container_width=True,
-    height=320,
-)
+st.subheader("All LC (sheet)")
+st.dataframe(old[["site_code", "lc_name", "lc_phone", "handled_by"]], use_container_width=True, height=320)
 buf = BytesIO()
 old.to_excel(buf, index=False)
 st.download_button("Excel old LC", data=buf.getvalue(), file_name="lc_old.xlsx")
@@ -284,7 +302,9 @@ if firebase_ready():
         if saved:
             st.subheader("Firebase LC saves")
             sdf = pd.DataFrame(saved)
-            cols = [c for c in ["site_code", "lc_name", "lc_number", "source", "note", "updated_at"] if c in sdf.columns]
+            cols = [c for c in [
+                "site_code", "lc_name", "lc_number", "old_lc_name", "old_lc_number", "source", "updated_at"
+            ] if c in sdf.columns]
             st.dataframe(sdf[cols] if cols else sdf, use_container_width=True, height=240)
     except Exception:
         pass
