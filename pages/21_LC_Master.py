@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import show_last_update
 from utils.google_sheets import load_sheet_as_csv
 from utils.firebase_store import firebase_ready, upsert, get_one, list_all
-from utils.sheet_write import update_lc_excel, sa_email
+from utils.sheet_write import update_lc_excel, sa_email, test_sheet_write
 
 XTRANET = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
 MAIL_ID = "1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I"
@@ -25,6 +25,23 @@ st.title("LC Master")
 st.caption(
     "Naya pending-mail number aate hi purana hata ke Excel mein automatic update + Prev columns"
 )
+
+if st.button("Test Google Sheet write"):
+    res = test_sheet_write()
+    if res.get("ok"):
+        st.success(
+            f"Sheet write OK — {res.get('title')} • tab LC_Updates pe TEST row padi"
+        )
+        st.write(res.get("tabs"))
+    else:
+        st.error(res.get("error") or "unknown error")
+        st.markdown(
+            "**Fix:**\n"
+            f"1. Share → Editor → `{res.get('email') or 'firebase-adminsdk-fbsvc@xtranet-d7dca.iam.gserviceaccount.com'}`\n"
+            "2. Google Cloud → APIs ON karo (project **xtranet-d7dca**):\n"
+            "- [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com?project=xtranet-d7dca)\n"
+            "- [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com?project=xtranet-d7dca)\n"
+        )
 
 
 def _col(df, *names):
@@ -135,7 +152,7 @@ def apply_new(rows, src_label="auto"):
                 })
             ok += 1
         except Exception as e:
-            fail.append(f"{site}: {e}")
+            fail.append(f"{site}: {type(e).__name__}: {e}")
     return ok, fail
 
 
@@ -190,7 +207,7 @@ k4.metric("Same — skip", int((merged["status"] == "SAME — skip").sum()))
 
 st.info(
     "Last mile data abhi nahi diya — jab doge tab New Last Mile columns fill honge. "
-    "LC ke liye Excel pe Prev LC Name / Prev LC Contact / LC Updated At columns add hote hain."
+    "LC ke liye Excel pe New LC Name / New LC Contact columns add hote hain."
 )
 
 sig = tuple(sorted(new_only["site_code"].astype(str).tolist())) if not new_only.empty else ()
@@ -203,7 +220,9 @@ if sig and st.session_state.get("lc_auto_sig") != sig:
         load_old_lc.clear()
         load_target.clear()
     if fail:
-        st.error("\n".join(fail[:8]))
+        st.error(fail[0])
+        if len(fail) > 1:
+            st.error("\n".join(fail[1:8]))
         try:
             st.warning(
                 "Sheet write ke liye Editor share:\n"
@@ -284,9 +303,10 @@ if q:
                     mail_sa = sa_email()
                 except Exception:
                     mail_sa = "(service account)"
+                st.error(f"{type(e).__name__}: {e}")
                 st.warning(
                     f"Sheet write fail. Editor share: {mail_sa}\n"
-                    f"https://docs.google.com/spreadsheets/d/{XTRANET}\n{e}"
+                    f"https://docs.google.com/spreadsheets/d/{XTRANET}"
                 )
 
 st.markdown("---")
