@@ -37,6 +37,60 @@ def _fix_private_key(raw):
     return key
 
 
+def _escape_ctrl_in_strings(text):
+    """TOML turns \\n into real newlines inside JSON strings — re-escape them."""
+    out = []
+    in_str = False
+    esc = False
+    for ch in text:
+        if not in_str:
+            if ch == '"':
+                in_str = True
+            out.append(ch)
+            continue
+        if esc:
+            out.append(ch)
+            esc = False
+            continue
+        if ch == "\\":
+            out.append(ch)
+            esc = True
+            continue
+        if ch == '"':
+            in_str = False
+            out.append(ch)
+            continue
+        if ch == "\n":
+            out.append("\\n")
+            continue
+        if ch == "\r":
+            continue
+        if ch == "\t":
+            out.append("\\t")
+            continue
+        if ord(ch) < 32:
+            continue
+        out.append(ch)
+    return "".join(out)
+
+
+def _parse_sa_json(raw):
+    if isinstance(raw, dict):
+        return dict(raw)
+    text = str(raw or "").strip()
+    if text.startswith('"') and text.endswith('"') and text.count('"') == 2:
+        text = text[1:-1]
+    for candidate in (text, _escape_ctrl_in_strings(text)):
+        try:
+            return json.loads(candidate, strict=False)
+        except json.JSONDecodeError:
+            continue
+    raise ValueError(
+        "JSON parse fail. Secrets box mein FIREBASE_SA_JSON ke andar poori JSON file "
+        "paste karo — fields alag mat todna."
+    )
+
+
 def _load_sa_info():
     import streamlit as st
 
@@ -46,10 +100,7 @@ def _load_sa_info():
             raw = st.secrets[name]
             break
     if raw is not None:
-        text = str(raw).strip()
-        if text.startswith("\"") and text.endswith("\""):
-            text = text[1:-1]
-        info = json.loads(text)
+        info = _parse_sa_json(raw)
     else:
         info = dict(st.secrets["google_service_account"])
         if "private_key" not in info:
@@ -71,7 +122,6 @@ def _load_sa_info():
 
 def get_db():
     global _app
-    import streamlit as st
     import firebase_admin
     from firebase_admin import credentials, firestore
 
