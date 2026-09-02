@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import show_last_update
 from utils.google_sheets import load_sheet_as_csv
 from utils.firebase_store import firebase_ready, upsert, get_one, list_all
-from utils.sheet_write import update_lc_excel, sa_email, test_sheet_write
+from utils.sheet_write import update_lc_excel, update_lc_excel_batch, sa_email, test_sheet_write
 
 XTRANET = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
 MAIL_ID = "1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I"
@@ -95,7 +95,6 @@ def load_old_lc():
 
 @st.cache_data(ttl=90, show_spinner=False)
 def load_pending_mail():
-    """Poori OPEN CALLS sheet. Dono contact columns + alternate."""
     url = f"https://docs.google.com/spreadsheets/d/{MAIL_ID}/export?format=csv&gid={MAIL_GID}"
     raw = pd.read_csv(url, header=None)
     header = [str(c).strip() for c in raw.iloc[3].tolist()]
@@ -130,7 +129,6 @@ def load_pending_mail():
         axis=1,
     )
     df = df[df["site_code"].str.len() > 3]
-    # site-wise: saari rows padho, numbers merge
     rows = []
     for site, g in df.groupby("site_code", dropna=True):
         names = [clean(x) for x in g["mail_name"].tolist() if clean(x)]
@@ -158,28 +156,42 @@ def load_target():
 
 
 def apply_rows(rows, name_col, phone_col, src_label):
-    ok, fail = 0, []
+    items = []
     for _, r in rows.iterrows():
         site = clean(r["site_code"])
         name = clean(r.get(name_col)) or clean(r.get("lc_name"))
         phone = clean(r.get(phone_col))
         if not site or not phone:
             continue
-        try:
-            update_lc_excel(site, name, phone, clean(r.get("handled_by")), source=src_label)
-            if firebase_ready():
-                upsert("site_lc", site, {
-                    "site_code": site,
-                    "lc_name": name,
-                    "lc_number": phone,
-                    "old_lc_name": clean(r.get("lc_name")),
-                    "old_lc_number": clean(r.get("lc_phone")),
-                    "source": src_label,
-                })
-            ok += 1
-        except Exception as e:
-            fail.append(f"{site}: {type(e).__name__}: {e}")
-    return ok, fail
+        items.append({
+            "site": site,
+            "name": name,
+            "phone": phone,
+            "handled_by": clean(r.get("handled_by")),
+            "source": src_label,
+            "old_name": clean(r.get("lc_name")),
+            "old_phone": clean(r.get("lc_phone")),
+        })
+    if not items:
+        return 0, []
+    try:
+        res = update_lc_excel_batch(items, source=src_label)
+        if firebase_ready():
+            for it in items:
+                try:
+                    upsert("site_lc", it["site"], {
+                        "site_code": it["site"],
+                        "lc_name": it["name"],
+                        "lc_number": it["phone"],
+                        "old_lc_name": it["old_name"],
+                        "old_lc_number": it["old_phone"],
+                        "source": src_label,
+                    })
+                except Exception:
+                    pass
+        return int(res.get("ok") or len(items)), []
+    except Exception as e:
+        return 0, [f"{type(e).__name__}: {e}"]
 
 
 try:
@@ -204,7 +216,6 @@ if st.button("Reload + auto (poori sheet dubara padho)"):
     st.session_state.pop("lc_auto_sig", None)
     st.rerun()
 
-# existing phones = LC tab + target sheet (jo pehle se pada hai)
 exist_map = {}
 for _, r in old.iterrows():
     exist_map[r["site_code"]] = {
@@ -227,7 +238,10 @@ if not target.empty and "site_code" in target.columns:
 
 mail_s = mail.copy() if not mail.empty else pd.DataFrame(columns=["site_code", "mail_name", "mail_phone"])
 rows = []
-for site in sorted(set(list(exist_map.keys()) + mail_s["site_code"].tolist() if not mail_s.empty else list(exist_map.keys()))):
+all_sites = set(exist_map.keys())
+if not mail_s.empty:
+    all_sites |= set(mail_s["site_code"].tolist())
+for site in sorted(all_sites):
     ex = exist_map.get(site, {"name": "", "phone": "", "handled_by": "", "digits": set()})
     mhit = mail_s[mail_s["site_code"] == site] if not mail_s.empty else mail_s
     mail_name = clean(mhit.iloc[0]["mail_name"]) if len(mhit) else ""
@@ -242,8 +256,6 @@ for site in sorted(set(list(exist_map.keys()) + mail_s["site_code"].tolist() if 
         status = "NEW (LC empty)"
     elif mail_d <= old_d:
         status = "SAME — skip"
-    elif mail_d & old_d and not (mail_d - old_d):
-        status = "SAME — skip"
     else:
         status = "NEW NUMBER"
     rows.append({
@@ -257,28 +269,24 @@ for site in sorted(set(list(exist_map.keys()) + mail_s["site_code"].tolist() if 
     })
 merged = pd.DataFrame(rows)
 
-# missing on target but present on LC tab → fill target from LC sheet
 need_fill = []
 if not target.empty:
     tgt_empty = set()
     for _, r in target.iterrows():
         if not last10s(r.get("tgt_phone", "")):
             tgt_empty.add(clean(r["site_code"]))
+    tset = set(target["site_code"])
     for site, ex in exist_map.items():
-        if ex["digits"] and (site in tgt_empty or site not in set(target["site_code"])):
-            if site not in set(mail_s["site_code"]) or True:
-                # fill only if target empty
-                if site in tgt_empty or (not target.empty and site not in set(target["site_code"])):
-                    need_fill.append({
-                        "site_code": site,
-                        "lc_name": ex["name"],
-                        "lc_phone": ex["phone"],
-                        "mail_name": ex["name"],
-                        "mail_phone": ex["phone"],
-                        "handled_by": ex.get("handled_by", ""),
-                    })
+        if ex["digits"] and (site in tgt_empty or site not in tset):
+            need_fill.append({
+                "site_code": site,
+                "lc_name": ex["name"],
+                "lc_phone": ex["phone"],
+                "mail_name": ex["name"],
+                "mail_phone": ex["phone"],
+                "handled_by": ex.get("handled_by", ""),
+            })
 fill_df = pd.DataFrame(need_fill).drop_duplicates("site_code") if need_fill else pd.DataFrame()
-
 new_only = merged[merged["status"].str.startswith("NEW")].copy()
 
 k1, k2, k3, k4 = st.columns(4)
@@ -292,39 +300,28 @@ sig = (
     tuple(sorted(fill_df["site_code"].tolist()) if not fill_df.empty else ()),
 )
 if st.session_state.get("lc_auto_sig") != sig:
-    with st.spinner("Poori sheet padh ke automatic LC update..."):
-        ok1 = fail1 = []
-        ok_f, fail_f = 0, []
+    with st.spinner("Batch Excel update (quota-safe)..."):
+        ok_f, fail_f = (0, [])
         if not fill_df.empty:
             ok_f, fail_f = apply_rows(fill_df, "mail_name", "mail_phone", "lc_tab_fill")
-        ok_n, fail_n = 0, []
+        ok_n, fail_n = (0, [])
         if not new_only.empty:
             ok_n, fail_n = apply_rows(new_only, "mail_name", "mail_phone", "pending_mail_auto")
     st.session_state["lc_auto_sig"] = sig
     if ok_f:
-        st.success(f"LC tab se {ok_f} sites target sheet pe fill (pehle khali tha).")
+        st.success(f"LC tab se {ok_f} sites fill.")
     if ok_n:
-        st.success(f"Pending mail se {ok_n} NEW numbers Excel pe update.")
+        st.success(f"Pending mail se {ok_n} NEW numbers update.")
     fails = fail_f + fail_n
     if fails:
         st.error(fails[0])
-        if len(fails) > 1:
-            st.error("\n".join(fails[1:8]))
-        try:
-            st.warning(f"Editor share: {sa_email()}")
-        except Exception:
-            pass
     if ok_f or ok_n:
         load_old_lc.clear()
         load_target.clear()
 
 st.subheader("Pending mail vs LC (dono contact columns)")
 show_cols = [c for c in ["site_code", "lc_name", "lc_phone", "mail_name", "mail_phone", "status"] if c in merged.columns]
-st.dataframe(
-    merged[show_cols].sort_values("status"),
-    use_container_width=True,
-    height=320,
-)
+st.dataframe(merged[show_cols].sort_values("status"), use_container_width=True, height=320)
 
 st.markdown("---")
 st.subheader("Manual LC update (site code)")
@@ -338,14 +335,13 @@ if q:
     st.write(f"**LC tab:** {old_name} / {old_ph}")
     st.write(f"**Pending mail (dono columns merge):** {mail_name} / {mail_ph}")
     if mail_ph and last10s(mail_ph) and last10s(mail_ph) <= last10s(old_ph):
-        st.info("Yahi number pehle se LC mein hai — auto skip. Manual change kar sakte ho.")
+        st.info("Yahi number pehle se LC mein hai — auto skip.")
         default_name, default_ph = old_name, old_ph
     elif mail_ph:
         st.warning("Mail pe extra/naya number hai.")
         default_name, default_ph = mail_name or old_name, mail_ph or old_ph
     else:
         default_name, default_ph = old_name, old_ph
-
     n1, n2 = st.columns(2)
     with n1:
         new_name = st.text_input("LC name", value=default_name)
@@ -355,29 +351,23 @@ if q:
     if st.button("Save manual (Excel + Firebase)"):
         if not new_name and not new_ph:
             st.warning("Name ya number dalo.")
+        elif last10s(new_ph) and last10s(new_ph) <= last10s(old_ph) and clean(new_name) == clean(old_name):
+            st.info("Same details — skip.")
         else:
-            if last10s(new_ph) and last10s(new_ph) <= last10s(old_ph) and clean(new_name) == clean(old_name):
-                st.info("Same details — Excel overwrite skip.")
-            else:
-                if firebase_ready():
-                    try:
-                        upsert("site_lc", q, {
-                            "site_code": q,
-                            "lc_name": new_name.strip(),
-                            "lc_number": new_ph.strip(),
-                            "old_lc_name": old_name,
-                            "old_lc_number": old_ph,
-                            "note": note.strip(),
-                            "source": "manual",
-                        })
-                        st.success("Firebase save.")
-                    except Exception as e:
-                        st.error(f"Firebase: {e}")
+            if firebase_ready():
                 try:
-                    how = update_lc_excel(q, new_name.strip(), new_ph.strip(), source="manual")
-                    st.success(f"Excel update: {how}")
+                    upsert("site_lc", q, {
+                        "site_code": q, "lc_name": new_name.strip(), "lc_number": new_ph.strip(),
+                        "old_lc_name": old_name, "old_lc_number": old_ph, "note": note.strip(), "source": "manual",
+                    })
+                    st.success("Firebase save.")
                 except Exception as e:
-                    st.error(f"{type(e).__name__}: {e}")
+                    st.error(f"Firebase: {e}")
+            try:
+                how = update_lc_excel(q, new_name.strip(), new_ph.strip(), source="manual")
+                st.success(f"Excel update: {how}")
+            except Exception as e:
+                st.error(f"{type(e).__name__}: {e}")
 
 st.markdown("---")
 st.subheader("LC tab (401145054) poori list")
