@@ -8,6 +8,11 @@ IST = ZoneInfo("Asia/Kolkata")
 PROJECT_ID = "xtranet-d7dca"
 _app = None
 
+PEM_BLOCK = re.compile(
+    r"-----BEGIN ([A-Z ]*PRIVATE KEY)-----([^-]*)-----END \1-----",
+    re.DOTALL,
+)
+
 
 def _now():
     return datetime.now(IST).strftime("%d-%b-%Y %I:%M:%S %p IST")
@@ -26,19 +31,36 @@ def firebase_ready():
 
 
 def _fix_private_key(raw):
-    key = str(raw or "").strip().strip('"').strip("'")
-    key = key.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\r\n", "\n")
-    key = key.replace("BEGIN_PRIVATE_KEY", "BEGIN PRIVATE KEY")
-    key = key.replace("END_PRIVATE_KEY", "END PRIVATE KEY")
-    key = re.sub(r"-+BEGIN PRIVATE KEY-+", "-----BEGIN PRIVATE KEY-----", key)
-    key = re.sub(r"-+END PRIVATE KEY-+", "-----END PRIVATE KEY-----", key)
-    if not key.endswith("\n"):
-        key += "\n"
-    return key
+    key = str(raw or "")
+    key = key.replace("\\r\\n", "\n").replace("\\n", "\n").replace("\r\n", "\n").replace("\r", "\n")
+    key = key.replace("BEGIN_PRIVATE_KEY", "BEGIN PRIVATE KEY").replace("END_PRIVATE_KEY", "END PRIVATE KEY")
+    m = PEM_BLOCK.search(key)
+    if not m:
+        m2 = re.search(
+            r"BEGIN ([A-Z ]*PRIVATE KEY)-----(.*?)-----END",
+            key,
+            re.DOTALL,
+        )
+        if m2:
+            label = m2.group(1).strip() or "PRIVATE KEY"
+            body = m2.group(2)
+        else:
+            label = "PRIVATE KEY"
+            body = key
+    else:
+        label = (m.group(1) or "PRIVATE KEY").strip()
+        body = m.group(2)
+    body = re.sub(r"[^A-Za-z0-9+/=]", "", body)
+    if len(body) < 80:
+        raise ValueError(
+            "private_key toot gayi (PEM body short). Secrets mein JSON file ka "
+            "private_key field poora paste karo."
+        )
+    wrapped = "\n".join(body[i : i + 64] for i in range(0, len(body), 64))
+    return f"-----BEGIN {label}-----\n{wrapped}\n-----END {label}-----\n"
 
 
 def _escape_ctrl_in_strings(text):
-    """TOML turns \\n into real newlines inside JSON strings — re-escape them."""
     out = []
     in_str = False
     esc = False
@@ -86,8 +108,7 @@ def _parse_sa_json(raw):
         except json.JSONDecodeError:
             continue
     raise ValueError(
-        "JSON parse fail. Secrets box mein FIREBASE_SA_JSON ke andar poori JSON file "
-        "paste karo — fields alag mat todna."
+        "JSON parse fail. FIREBASE_SA_JSON mein poori JSON file paste karo."
     )
 
 
@@ -103,20 +124,13 @@ def _load_sa_info():
         info = _parse_sa_json(raw)
     else:
         info = dict(st.secrets["google_service_account"])
-        if "private_key" not in info:
-            raise ValueError(
-                "Secrets galat hain. Sabse aasan: FIREBASE_SA_JSON mein poori JSON file paste karo."
-            )
     if not isinstance(info, dict):
         raise ValueError("Service account JSON object nahi bana.")
+    info = {str(k): info[k] for k in info}
     if "private_key" not in info:
         raise ValueError("JSON mein private_key field nahi hai.")
     info["private_key"] = _fix_private_key(info["private_key"])
     info["type"] = info.get("type") or "service_account"
-    if "BEGIN PRIVATE KEY" not in info["private_key"]:
-        raise ValueError(
-            "private_key PEM nahi hai. JSON file ka poora content FIREBASE_SA_JSON mein paste karo."
-        )
     return info
 
 
@@ -129,7 +143,16 @@ def get_db():
         raise RuntimeError("Firebase secrets missing.")
     if not firebase_admin._apps:
         info = _load_sa_info()
-        cred = credentials.Certificate(info)
+        try:
+            cred = credentials.Certificate(info)
+        except ValueError as e:
+            pk = str(info.get("private_key", ""))
+            raise ValueError(
+                "Firebase key load fail. PEM starts_with_BEGIN="
+                f"{pk.strip().startswith('-----BEGIN')} len={len(pk)}. "
+                "Secrets box poora saaf karke sirf FIREBASE_SA_JSON = \"\"\" {json} \"\"\" paste karo. "
+                f"Detail: {e}"
+            ) from e
         pid = info.get("project_id") or PROJECT_ID
         _app = firebase_admin.initialize_app(cred, {"projectId": pid})
     return firestore.client()
