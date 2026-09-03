@@ -14,10 +14,10 @@ from openpyxl.utils import get_column_letter
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import filter_by_period, isp_options, classify_isp
 from utils.auto_load import auto_load_tickets
-from utils.bootstrap import show_last_update
+from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps, isp_label
 
 st.set_page_config(page_title="Penalty & SLA | XTRNATE", page_icon="📜", layout="wide")
-show_last_update()
+ensure_ready()
 
 # Exact CKT Page Custom CSS Theme
 st.markdown("""
@@ -61,9 +61,6 @@ if st.session_state.get('closed_df') is None:
     with st.spinner("Auto-loading data..."):
         auto_load_tickets()
 
-if 'selected_isp' not in st.session_state:
-    st.session_state.selected_isp = "ALL"
-
 closed_df = st.session_state.get('closed_df')
 open_df = st.session_state.get('open_df')
 
@@ -74,6 +71,7 @@ if closed_df is None or closed_df.empty:
 period = st.radio("Period", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "Overall"], horizontal=True)
 period_map = {"Last 1 Month": "1M", "Last 3 Months": "3M", "Last 6 Months": "6M", "Overall": "ALL"}
 df_all = filter_by_period(closed_df, period_map[period]) if period_map[period] != "ALL" else closed_df.copy()
+df_all = apply_isp_filter(df_all)
 
 if 'resolution_days' not in df_all.columns:
     st.error("resolution_days nahi hai. Submitted + Resolved Time-Active chahiye.")
@@ -176,6 +174,9 @@ if "isp" not in df_all.columns and "owner" in df_all.columns:
     df_all["isp"] = df_all["owner"].map(classify_isp)
 
 isp_names = isp_options(df_all, add_all=False)
+picked = get_selected_isps()
+if picked and isp_label(picked) not in ("ALL", "NONE"):
+    isp_names = [n for n in isp_names if n in picked] or isp_names
 if not isp_names and "isp" in df_all.columns:
     isp_names = [
         x for x in df_all["isp"].dropna().astype(str).unique()

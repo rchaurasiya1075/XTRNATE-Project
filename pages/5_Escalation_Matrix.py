@@ -5,15 +5,22 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.escalation import load_escalation_matrix, save_escalation_matrix
+from utils.bootstrap import ensure_ready, get_selected_isps, available_isps
 
 st.set_page_config(page_title="Escalation Matrix | XTRNATE", page_icon="⚙️", layout="wide")
 
 st.title("⚙️ Escalation Matrix Configuration")
 st.markdown("Yahan se aap **Name, Email, Time Rules, Level** sab edit kar sakte ho. Har ISP ka alag matrix hai.")
 
-isp = st.session_state.get('selected_isp')
-if not isp or isp == "ALL":
-    st.warning("Please select a specific ISP from the Home page (Owner column ke saare ISP). Matrix is separate for each ISP.")
+ensure_ready()
+picked = get_selected_isps()
+opts = picked or available_isps()
+if not opts:
+    st.warning("Koi ISP nahi mila. Home pe data load karo.")
+    st.stop()
+isp = opts[0] if len(opts) == 1 else st.selectbox("Matrix kis ISP ka edit karna hai", opts)
+if not isp or isp in ("ALL", "NONE"):
+    st.warning("Ek specific ISP choose karo — matrix har ISP ke liye alag hai.")
     st.stop()
 
 st.success(f"Editing Escalation Matrix for: **{isp}**")

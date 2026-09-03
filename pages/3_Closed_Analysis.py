@@ -8,15 +8,13 @@ from io import BytesIO
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import filter_by_period, get_summary_stats
+from utils.bootstrap import ensure_ready, apply_isp_filter
 
 st.set_page_config(page_title="Closed Analysis | XTRNATE", page_icon="📈", layout="wide")
 
 st.title("📈 Closed Tickets Deep Analysis")
 
-isp = st.session_state.get('selected_isp')
-if not isp:
-    st.warning("Please select an ISP from the Home page first.")
-    st.stop()
+isp = ensure_ready()
 
 closed_df = st.session_state.get('closed_df')
 
@@ -24,8 +22,7 @@ if closed_df is None or closed_df.empty:
     st.warning("No closed tickets data found. Please upload from **Upload Data** page.")
     st.stop()
 
-if isp != "ALL" and 'isp' in closed_df.columns:
-    closed_df = closed_df[closed_df['isp'] == isp].copy()
+closed_df = apply_isp_filter(closed_df)
 
 st.markdown(f"**ISP:** `{isp}` | **Total Closed Records:** {len(closed_df)}")
 

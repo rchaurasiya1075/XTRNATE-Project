@@ -147,6 +147,55 @@ def isp_options(*frames, add_all=True):
     opts = head + rest
     return (['ALL'] + opts) if add_all else opts
 
+
+def isp_aliases(name):
+    """Expand one ISP pick to matching labels (ONEOTT ↔ OTT ↔ CELERITY)."""
+    u = str(name or "").strip().upper()
+    if not u:
+        return set()
+    aliases = {u, str(name).strip()}
+    if u in ("ONEOTT", "OTT", "CELERITY", "ONE OTT"):
+        aliases.update({"ONEOTT", "OTT", "CELERITY", "ONE OTT"})
+    if u in ("HCIN", "HICOM", "HCIL"):
+        aliases.update({"HCIN", "HICOM", "HCIL"})
+    return {a for a in aliases if a}
+
+
+def filter_by_isps(df, selected=None):
+    """Keep rows for selected ISP names. None or ['ALL'] → no filter. [] → empty."""
+    if df is None:
+        return pd.DataFrame()
+    if getattr(df, "empty", True):
+        return df
+    if selected is None:
+        return df
+    if isinstance(selected, str):
+        selected = [selected]
+    names = [str(x).strip() for x in selected if x and str(x).strip()]
+    if not names:
+        return df.iloc[0:0].copy()
+    if any(str(x).upper() == "ALL" for x in names):
+        return df
+    aliases = set()
+    for n in names:
+        aliases |= isp_aliases(n)
+        aliases.add(n)
+    aliases_u = {str(a).upper() for a in aliases}
+
+    mask = pd.Series(False, index=df.index)
+    if "isp" in df.columns:
+        mask = mask | df["isp"].astype(str).str.strip().str.upper().isin(aliases_u)
+    if "owner" in df.columns:
+        classified = df["owner"].map(classify_isp).astype(str).str.upper()
+        mask = mask | classified.isin(aliases_u)
+        mask = mask | df["owner"].astype(str).str.strip().str.upper().isin(aliases_u)
+    if "partner" in df.columns:
+        mask = mask | df["partner"].astype(str).str.strip().str.upper().isin(aliases_u)
+    if not mask.any() and "isp" not in df.columns and "owner" not in df.columns:
+        return df
+    return df[mask].copy()
+
+
 def process_closed_tickets(df):
     if df is None or df.empty:
         return pd.DataFrame()

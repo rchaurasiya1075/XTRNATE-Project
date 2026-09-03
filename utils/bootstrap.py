@@ -101,11 +101,140 @@ def show_last_update():
         st.caption(msg)
 
 
+def available_isps():
+    from utils.data_processing import isp_options
+    opts = isp_options(
+        st.session_state.get("closed_df"),
+        st.session_state.get("open_df"),
+        st.session_state.get("raw_tickets_df"),
+        add_all=False,
+    )
+    return opts or ["HCIN", "ONEOTT"]
+
+
+def get_selected_isps():
+    """List of currently selected ISP names. Empty list means none."""
+    opts = available_isps()
+    val = st.session_state.get("selected_isps")
+    if val is None:
+        old = st.session_state.get("selected_isp", "ALL")
+        if old in (None, "", "ALL"):
+            val = list(opts)
+            st.session_state["_isp_all_mode"] = True
+        elif old == "NONE":
+            val = []
+            st.session_state["_isp_all_mode"] = False
+        elif " + " in str(old):
+            val = [x.strip() for x in str(old).split("+") if x.strip() in opts] or list(opts)
+            st.session_state["_isp_all_mode"] = set(val) >= set(opts)
+        elif old in opts:
+            val = [old]
+            st.session_state["_isp_all_mode"] = False
+        else:
+            val = list(opts)
+            st.session_state["_isp_all_mode"] = True
+        st.session_state.selected_isps = val
+    if st.session_state.get("_isp_all_mode"):
+        val = list(opts)
+        st.session_state.selected_isps = val
+    else:
+        val = [x for x in (val or []) if x in opts]
+        st.session_state.selected_isps = val
+    return val
+
+
+def isp_label(selected=None):
+    opts = available_isps()
+    selected = list(selected) if selected is not None else get_selected_isps()
+    if not selected:
+        return "NONE"
+    if set(selected) >= set(opts):
+        return "ALL"
+    return " + ".join(selected)
+
+
+def apply_isp_filter(df):
+    from utils.data_processing import filter_by_isps
+    if df is None:
+        return df
+    picked = get_selected_isps()
+    opts = available_isps()
+    if st.session_state.get("_isp_all_mode") or (picked and set(picked) >= set(opts)):
+        return df
+    return filter_by_isps(df, picked)
+
+
+def render_isp_multiselect(location="main", key="isp_multi_main"):
+    """Multi-select ISP picker. Sidebar + page dono se sync."""
+    opts = available_isps()
+    stored = get_selected_isps()
+    stored = [x for x in stored if x in opts]
+    src = st.session_state.get("_isp_src")
+
+    if st.session_state.pop(f"{key}_set_all", False):
+        st.session_state[key] = list(opts)
+        st.session_state.selected_isps = list(opts)
+        st.session_state["_isp_all_mode"] = True
+        stored = list(opts)
+    if st.session_state.pop(f"{key}_set_clr", False):
+        st.session_state[key] = []
+        st.session_state.selected_isps = []
+        st.session_state["_isp_all_mode"] = False
+        stored = []
+
+    if key not in st.session_state:
+        st.session_state[key] = stored
+    elif src and src != key:
+        st.session_state[key] = stored
+
+    box = st.sidebar if location == "sidebar" else st
+    with box:
+        if location == "sidebar":
+            st.markdown("**ISP / Partner filter**")
+            st.caption("Ek se zyada tick kar sakte ho")
+        picked = st.multiselect(
+            "ISP / Partner (multiple)",
+            options=opts,
+            key=key,
+            help="Jitne ISP chahiye tick karo — sirf unhi ka data dikhega.",
+            placeholder="Select one or more ISP…",
+        )
+        c1, c2 = st.columns(2)
+        if c1.button("All ISPs", key=f"{key}_all", use_container_width=True):
+            st.session_state[f"{key}_set_all"] = True
+            st.session_state._isp_src = key
+            st.rerun()
+        if c2.button("Clear", key=f"{key}_clr", use_container_width=True):
+            st.session_state[f"{key}_set_clr"] = True
+            st.session_state._isp_src = key
+            st.rerun()
+
+    st.session_state.selected_isps = list(picked)
+    st.session_state._isp_src = key
+    st.session_state["_isp_all_mode"] = bool(picked) and set(picked) >= set(opts)
+    label = isp_label(picked)
+    st.session_state.selected_isp = label
+    if location == "main":
+        if not picked:
+            st.warning("Koi ISP select nahi — All ISPs dabao ya list se tick karo.")
+        else:
+            st.success(f"**Active ISP:** {label}")
+    else:
+        st.sidebar.caption(f"Active: **{label}**")
+    return picked
+
+
 def ensure_ready():
-    if 'selected_isp' not in st.session_state or not st.session_state.selected_isp:
+    if "selected_isp" not in st.session_state or not st.session_state.selected_isp:
         st.session_state.selected_isp = "ALL"
-    if st.session_state.get('closed_df') is None:
+    if "selected_isps" not in st.session_state:
+        st.session_state.selected_isps = None
+    if st.session_state.get("closed_df") is None:
         with st.spinner("Data auto-fetch..."):
             auto_load_tickets()
     show_last_update()
-    return st.session_state.get('selected_isp', 'ALL')
+    render_isp_multiselect(location="main", key="isp_multi_main")
+    with st.sidebar:
+        st.markdown("**Active ISP / Partner**")
+        st.caption(isp_label() + "  •  Change: page top pe multi-select")
+    return isp_label()

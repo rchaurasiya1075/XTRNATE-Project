@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.bootstrap import ensure_ready
+from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import process_closed_tickets, classify_isp, isp_options
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 
@@ -250,10 +250,14 @@ if "status" in work.columns:
     if closed_mask.any():
         work = work[closed_mask].copy()
 
+partner = isp_label()
+work = apply_isp_filter(work)
+
 st.markdown("---")
 f1, f2, f3 = st.columns([1, 1, 2])
 with f1:
-    partner = st.radio("Select Partner", isp_options(work) or ["ALL"], horizontal=True)
+    st.markdown(f"**ISP:** {partner}")
+    st.caption("Top / sidebar se multiple ISP select karo")
 with f2:
     date_mode = st.radio("Date", ["Last N months", "From – To"], horizontal=True)
 with f3:
@@ -264,9 +268,6 @@ with f3:
         index=2,
         disabled=(date_mode == "From – To"),
     )
-
-if partner != "ALL":
-    work = work[work["isp"] == partner].copy()
 
 max_dt = work["resolved_time"].max()
 min_dt = work["resolved_time"].min()

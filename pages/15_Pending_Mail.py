@@ -8,12 +8,12 @@ import pandas as pd
 import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.bootstrap import show_last_update
+from utils.bootstrap import ensure_ready, get_selected_isps, isp_label
 from utils.google_sheets import extract_sheet_id
 from utils.data_processing import classify_isp, isp_options
 
 st.set_page_config(page_title="Pending Mail | XTRNATE", page_icon="📧", layout="wide")
-show_last_update()
+ensure_ready()
 
 MAIL_SHEET_URL = "https://docs.google.com/spreadsheets/d/1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I/edit?gid=762980214#gid=762980214"
 MAIL_GID = 762980214
@@ -159,102 +159,123 @@ if not opts:
     opts = [x for x in tmp["_partner"].dropna().astype(str).unique() if x not in ("UNKNOWN", "OTHER", "")]
 if not opts:
     opts = ["ONEOTT", "HCIN"]
-partner = st.radio("Mail for", opts, horizontal=True)
-brand = {"ONEOTT": "CELERITY", "HCIN": "HICOM"}.get(partner, partner)
-work = df[df["_partner"] == partner].copy()
 
-if work.empty:
-    st.info(f"{partner} ke pending tickets is sheet pe nahi hain.")
+picked = [x for x in get_selected_isps() if x in opts]
+if not picked:
+    picked = list(opts) if isp_label() in ("ALL", "NONE") else []
+if not picked:
+    st.warning("Selected ISP is pending-mail sheet pe nahi. Top / sidebar se ISP tick karo.")
     st.stop()
+st.caption("Selected ISP ke hisaab se mail. Multiple select ho to har ISP ka alag tab.")
 
-reason_col = "Down Category" if "Down Category" in work.columns else None
-if reason_col:
-    reasons = work[reason_col].fillna("Others").astype(str).str.strip()
-    reasons = reasons.replace({"": "Others", "nan": "Others"})
+
+def render_mail(partner, src):
+    brand = {"ONEOTT": "CELERITY", "HCIN": "HICOM"}.get(partner, partner)
+    work = src[src["_partner"] == partner].copy()
+    if work.empty:
+        st.info(f"{partner} ke pending tickets is sheet pe nahi hain.")
+        return
+
+    reason_col = "Down Category" if "Down Category" in work.columns else None
+    if reason_col:
+        reasons = work[reason_col].fillna("Others").astype(str).str.strip()
+        reasons = reasons.replace({"": "Others", "nan": "Others"})
+    else:
+        reasons = pd.Series(["Others"] * len(work))
+    reason_counts = reasons.value_counts()
+    reason_tbl = [(k, int(v)) for k, v in reason_counts.items()]
+    reason_tbl.append(("TOTAL", int(reason_counts.sum())))
+
+    states = work["State"].fillna("Unknown").astype(str) if "State" in work.columns else pd.Series(["Unknown"] * len(work))
+    loc_counts = states.value_counts()
+    loc_tbl = [(k, int(v)) for k, v in loc_counts.items()]
+    loc_tbl.append(("TOTAL", int(loc_counts.sum())))
+
+    def col(name):
+        if name in work.columns:
+            return name
+        for c in work.columns:
+            if c.strip().lower() == name.strip().lower():
+                return c
+        return None
+
+    bname = col("Branch Person Name")
+    bph = col("Branch Person Contact Number")
+    alt = col("Alternate Number")
+
+    rows = []
+    for _, r in work.iterrows():
+        rows.append({
+            "Incident ID": r.get("Incident ID", ""),
+            "Site Code": r.get("Site Code", ""),
+            "State": r.get("State", ""),
+            "Submitted Time": r.get("Submitted Time", ""),
+            "CurrentStatus": r.get("CurrentStatus", ""),
+            "Owner": r.get("Owner", brand),
+            "Remarks": r.get("Remarks", ""),
+            "Branch Person Name": r.get(bname, "") if bname else "",
+            "Branch Person Contact Number": r.get(bph, "") if bph else "",
+            "Alternate Number": r.get(alt, "") if alt else "",
+            "Down Time Aging": r.get("Down Time Aging", ""),
+            "ETR": r.get("ETR", ""),
+        })
+
+    subject, html = build_html(partner, brand, reason_tbl, loc_tbl, rows)
+
+    st.markdown(f"**Subject:** `{subject}`  •  Tickets: **{len(work)}**")
+    st.code(subject, language=None)
+    plain = (
+        "Dear Support,\n\n"
+        "Please prioritize and resolve all high-aging and long-pending cases at the earliest. "
+        "Also, ensure that the latest progress, revised ETR, outage reason, and resolution updates "
+        "are updated in the MARS portal.\n\n"
+        "Please find the attached list of pending cases for your reference.\n\n"
+        f"Open pending ({partner} / {brand}): {len(work)} tickets.\n"
+    )
+    st.text_area("Mail body (copy)", plain, height=140, key=f"mail_body_{partner}")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Outage Reason**")
+        st.dataframe(pd.DataFrame(reason_tbl, columns=["OUTAGE REASON", brand]), hide_index=True, use_container_width=True)
+    with c2:
+        st.markdown("**Location**")
+        st.dataframe(pd.DataFrame(loc_tbl, columns=["LOCATION", brand]), hide_index=True, use_container_width=True)
+
+    st.markdown("---")
+    st.subheader("Mail preview")
+    st.markdown(html, unsafe_allow_html=True)
+
+    det = pd.DataFrame(rows)
+    st.dataframe(det, use_container_width=True, height=420)
+
+    buf = BytesIO()
+    with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
+        pd.DataFrame(reason_tbl, columns=["OUTAGE REASON", brand]).to_excel(w, index=False, sheet_name="Reason")
+        pd.DataFrame(loc_tbl, columns=["LOCATION", brand]).to_excel(w, index=False, sheet_name="Location")
+        det.to_excel(w, index=False, sheet_name="Pending")
+
+    st.download_button(
+        f"📥 Download {partner} pending mail Excel",
+        data=buf.getvalue(),
+        file_name=f"OPEN_PENDING_{partner}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=f"mail_xlsx_{partner}",
+    )
+    st.download_button(
+        "📥 Download HTML mail",
+        data=html.encode("utf-8"),
+        file_name=f"OPEN_PENDING_{partner}.html",
+        mime="text/html",
+        key=f"mail_html_{partner}",
+    )
+
+
+if len(picked) == 1:
+    render_mail(picked[0], df)
 else:
-    reasons = pd.Series(["Others"] * len(work))
-reason_counts = reasons.value_counts()
-reason_tbl = [(k, int(v)) for k, v in reason_counts.items()]
-reason_tbl.append(("TOTAL", int(reason_counts.sum())))
+    tabs = st.tabs(picked)
+    for tab, partner in zip(tabs, picked):
+        with tab:
+            render_mail(partner, df)
 
-states = work["State"].fillna("Unknown").astype(str) if "State" in work.columns else pd.Series(["Unknown"] * len(work))
-loc_counts = states.value_counts()
-loc_tbl = [(k, int(v)) for k, v in loc_counts.items()]
-loc_tbl.append(("TOTAL", int(loc_counts.sum())))
-
-def col(name):
-    if name in work.columns:
-        return name
-    for c in work.columns:
-        if c.strip().lower() == name.strip().lower():
-            return c
-    return None
-
-bname = col("Branch Person Name")
-bph = col("Branch Person Contact Number")
-alt = col("Alternate Number")
-
-rows = []
-for _, r in work.iterrows():
-    rows.append({
-        "Incident ID": r.get("Incident ID", ""),
-        "Site Code": r.get("Site Code", ""),
-        "State": r.get("State", ""),
-        "Submitted Time": r.get("Submitted Time", ""),
-        "CurrentStatus": r.get("CurrentStatus", ""),
-        "Owner": r.get("Owner", brand),
-        "Remarks": r.get("Remarks", ""),
-        "Branch Person Name": r.get(bname, "") if bname else "",
-        "Branch Person Contact Number": r.get(bph, "") if bph else "",
-        "Alternate Number": r.get(alt, "") if alt else "",
-        "Down Time Aging": r.get("Down Time Aging", ""),
-        "ETR": r.get("ETR", ""),
-    })
-
-subject, html = build_html(partner, brand, reason_tbl, loc_tbl, rows)
-
-st.markdown(f"**Subject:** `{subject}`  •  Tickets: **{len(work)}**")
-st.code(subject, language=None)
-plain = (
-    "Dear Support,\n\n"
-    "Please prioritize and resolve all high-aging and long-pending cases at the earliest. "
-    "Also, ensure that the latest progress, revised ETR, outage reason, and resolution updates "
-    "are updated in the MARS portal.\n\n"
-    "Please find the attached list of pending cases for your reference.\n\n"
-    f"Open pending ({partner} / {brand}): {len(work)} tickets.\n"
-)
-st.text_area("Mail body (copy)", plain, height=140)
-
-c1, c2 = st.columns(2)
-with c1:
-    st.markdown("**Outage Reason**")
-    st.dataframe(pd.DataFrame(reason_tbl, columns=["OUTAGE REASON", brand]), hide_index=True, use_container_width=True)
-with c2:
-    st.markdown("**Location**")
-    st.dataframe(pd.DataFrame(loc_tbl, columns=["LOCATION", brand]), hide_index=True, use_container_width=True)
-
-st.markdown("---")
-st.subheader("Mail preview")
-st.markdown(html, unsafe_allow_html=True)
-
-det = pd.DataFrame(rows)
-st.dataframe(det, use_container_width=True, height=420)
-
-buf = BytesIO()
-with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
-    pd.DataFrame(reason_tbl, columns=["OUTAGE REASON", brand]).to_excel(w, index=False, sheet_name="Reason")
-    pd.DataFrame(loc_tbl, columns=["LOCATION", brand]).to_excel(w, index=False, sheet_name="Location")
-    det.to_excel(w, index=False, sheet_name="Pending")
-
-st.download_button(
-    f"📥 Download {partner} pending mail Excel",
-    data=buf.getvalue(),
-    file_name=f"OPEN_PENDING_{partner}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-)
-st.download_button(
-    "📥 Download HTML mail",
-    data=html.encode("utf-8"),
-    file_name=f"OPEN_PENDING_{partner}.html",
-    mime="text/html",
-)

@@ -8,16 +8,14 @@ from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.escalation import load_escalation_matrix, apply_escalation_to_open, get_escalation_color
+from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps
 
 st.set_page_config(page_title="Open Calls Dashboard | XTRNATE", page_icon="📞", layout="wide")
 
 st.title("📞 Open Calls Dashboard")
 st.markdown("**Assign to FE** + **Call on Hold** tickets | Full details + Site History")
 
-isp = st.session_state.get('selected_isp')
-if not isp:
-    st.warning("Please select an ISP from the Home page first.")
-    st.stop()
+isp = ensure_ready()
 
 open_df = st.session_state.get('open_df')
 closed_df = st.session_state.get('closed_df')
@@ -26,12 +24,8 @@ if open_df is None or open_df.empty:
     st.warning("No open tickets data found. Please upload Tickets Excel from **Upload Data** page (Auto Split tab).")
     st.stop()
 
-# Filter by ISP
-if isp != "ALL" and 'isp' in open_df.columns:
-    open_df = open_df[open_df['isp'] == isp].copy()
-if closed_df is not None and not closed_df.empty and isp != "ALL" and 'isp' in closed_df.columns:
-    closed_df = closed_df[closed_df['isp'] == isp].copy()
-
+open_df = apply_isp_filter(open_df)
+closed_df = apply_isp_filter(closed_df)
 # Keep only Assign to FE and Call on Hold
 if 'status' in open_df.columns:
     status_lower = open_df['status'].astype(str).str.lower()
@@ -45,7 +39,7 @@ else:
 
 st.markdown(f"**Active ISP:** `{isp}` | **Open Calls (Assign to FE + On Hold):** **{len(open_calls)}**")
 
-matrix = load_escalation_matrix(isp if isp != "ALL" else "HCIN")
+matrix = load_escalation_matrix(isp if isp not in ("ALL", "NONE") else (get_selected_isps() or ["HCIN"])[0])
 open_esc = apply_escalation_to_open(open_calls, matrix)
 
 # ========== SUMMARY ==========

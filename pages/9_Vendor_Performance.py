@@ -7,16 +7,14 @@ from io import BytesIO
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import filter_by_period, get_summary_stats
+from utils.bootstrap import ensure_ready, apply_isp_filter
 
 st.set_page_config(page_title="Vendor Performance | XTRNATE", page_icon="🏭", layout="wide")
 
 st.title("🏭 Vendor / Partner Performance Metrics")
 st.markdown("Owner / Partner wise tickets, downtime, resolution time aur repeat analysis")
 
-isp = st.session_state.get('selected_isp')
-if not isp:
-    st.warning("Home page se ISP select karo (Owner ke saare ISP / ALL).")
-    st.stop()
+isp = ensure_ready()
 
 closed_df = st.session_state.get('closed_df')
 open_df = st.session_state.get('open_df')
@@ -25,11 +23,8 @@ if closed_df is None or closed_df.empty:
     st.warning("Closed data nahi hai. Pehle Google Sheet / Excel load karo.")
     st.stop()
 
-# ISP filter
-if isp != "ALL" and 'isp' in closed_df.columns:
-    closed_df = closed_df[closed_df['isp'] == isp].copy()
-if open_df is not None and not open_df.empty and isp != "ALL" and 'isp' in open_df.columns:
-    open_df = open_df[open_df['isp'] == isp].copy()
+closed_df = apply_isp_filter(closed_df)
+open_df = apply_isp_filter(open_df)
 
 period = st.radio(
     "Period",

@@ -7,11 +7,11 @@ from io import BytesIO
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
-from utils.bootstrap import show_last_update
+from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import classify_isp, isp_options
 
 st.set_page_config(page_title="VPN Update | XTRNATE", page_icon="📡", layout="wide")
-show_last_update()
+ensure_ready()
 
 
 def is_open_status(s):
@@ -167,6 +167,7 @@ if not frames:
     st.stop()
 
 all_df = pd.concat(frames, ignore_index=True)
+all_df = apply_isp_filter(all_df)
 if "ticket_id" in all_df.columns:
     all_df = all_df.drop_duplicates(subset=["ticket_id"], keep="first")
 

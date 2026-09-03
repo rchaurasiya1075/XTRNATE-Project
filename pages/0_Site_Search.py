@@ -7,8 +7,10 @@ import io
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
 from utils.site_search import render_site_history_panel
+from utils.bootstrap import ensure_ready
 
 st.set_page_config(page_title="Site Search | XTRNATE", page_icon="🔍", layout="wide")
+ensure_ready()
 
 # Circuit ID page wala exact CSS theme & styles
 st.markdown("""

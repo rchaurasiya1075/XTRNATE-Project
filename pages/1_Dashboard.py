@@ -8,7 +8,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import filter_by_period, get_summary_stats
 from utils.escalation import load_escalation_matrix, apply_escalation_to_open
-from utils.bootstrap import ensure_ready
+from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps
 from utils.site_search import render_site_history_panel
 
 st.set_page_config(page_title="Dashboard | XTRNATE", page_icon="📊", layout="wide")
@@ -34,11 +34,8 @@ with st.expander("🔍 Site Code Search", expanded=False):
 
 closed_df = st.session_state.get('closed_df')
 open_df = st.session_state.get('open_df')
-
-if closed_df is not None and isp != "ALL" and 'isp' in closed_df.columns:
-    closed_df = closed_df[closed_df['isp'] == isp].copy()
-if open_df is not None and isp != "ALL" and 'isp' in open_df.columns:
-    open_df = open_df[open_df['isp'] == isp].copy()
+closed_df = apply_isp_filter(closed_df)
+open_df = apply_isp_filter(open_df)
 
 period = st.selectbox("Analysis Period (Closed)", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "All Time"], index=0)
 period_map = {"Last 1 Month": "1M", "Last 3 Months": "3M", "Last 6 Months": "6M", "All Time": "ALL"}
@@ -107,7 +104,7 @@ if open_df is not None and not open_df.empty:
     else:
         filtered_open = open_view
 
-    matrix = load_escalation_matrix(isp if isp != "ALL" else "HCIN")
+    matrix = load_escalation_matrix((get_selected_isps() or ["HCIN"])[0])
     open_with_esc = apply_escalation_to_open(filtered_open, matrix)
 
     c1, c2, c3, c4 = st.columns(4)

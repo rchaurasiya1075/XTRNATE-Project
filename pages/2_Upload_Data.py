@@ -6,18 +6,15 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import process_closed_tickets, process_open_tickets, process_site_master, merge_with_site_master
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
+from utils.bootstrap import ensure_ready
 
 st.set_page_config(page_title="Upload Data | XTRNATE", page_icon="📤", layout="wide")
 
 st.title("📤 Upload Data")
 st.markdown("Excel upload **ya** Google Sheet se load karo. Google Sheet data refresh ke baad bhi 1 click mein aa jayega.")
 
-isp = st.session_state.get('selected_isp')
-if not isp:
-    st.warning("Please select an ISP from the Home page first.")
-    st.stop()
-
-st.info(f"Active ISP context: **{isp}**")
+isp = ensure_ready()
+st.info(f"Active ISP context: **{isp}** (data filter sidebar / top se)")
 
 tab1, tab2, tab3, tab4 = st.tabs([
     "☁️ Google Sheet Load",

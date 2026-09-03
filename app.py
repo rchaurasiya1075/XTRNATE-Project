@@ -50,6 +50,8 @@ st.markdown("""
 
 if "selected_isp" not in st.session_state:
     st.session_state.selected_isp = "ALL"
+if "selected_isps" not in st.session_state:
+    st.session_state.selected_isps = None
 if "closed_df" not in st.session_state:
     st.session_state.closed_df = None
 if "open_df" not in st.session_state:

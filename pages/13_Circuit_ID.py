@@ -8,10 +8,10 @@ import io
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 from utils.data_processing import classify_isp
-from utils.bootstrap import show_last_update
+from utils.bootstrap import ensure_ready
 
 st.set_page_config(page_title="Circuit ID | XTRNATE", page_icon="🔌", layout="wide")
-show_last_update()
+ensure_ready()
 
 CKT_URL = "https://docs.google.com/spreadsheets/d/1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I/edit?usp=sharing"
 CKT_GID = 886642043

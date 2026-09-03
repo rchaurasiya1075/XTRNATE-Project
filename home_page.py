@@ -1,11 +1,12 @@
 import streamlit as st
 from utils.auto_load import auto_load_tickets
 from utils.site_search import render_site_history_panel
-from utils.bootstrap import show_last_update
-from utils.data_processing import isp_options
+from utils.bootstrap import show_last_update, render_isp_multiselect, isp_label, apply_isp_filter
 
 if "selected_isp" not in st.session_state:
     st.session_state.selected_isp = "ALL"
+if "selected_isps" not in st.session_state:
+    st.session_state.selected_isps = None
 if "closed_df" not in st.session_state:
     st.session_state.closed_df = None
 if "open_df" not in st.session_state:
@@ -48,30 +49,9 @@ if site_q and (search_btn or site_q):
     render_site_history_panel(site_q.strip().upper())
     st.markdown("---")
 
-st.markdown("### ISP Filter")
-st.caption("Owner column ke saare ISP. Naya ISP sheet mein aaya to yahan auto dikhega.")
-opts = isp_options(
-    st.session_state.get("closed_df"),
-    st.session_state.get("open_df"),
-    st.session_state.get("raw_tickets_df"),
-)
-if not opts:
-    opts = ["ALL"]
-if st.session_state.selected_isp not in opts:
-    st.session_state.selected_isp = "ALL"
-pick = st.radio(
-    "ISP",
-    opts,
-    horizontal=True,
-    index=opts.index(st.session_state.selected_isp),
-    label_visibility="collapsed",
-    key="home_isp_radio",
-)
-if pick != st.session_state.selected_isp:
-    st.session_state.selected_isp = pick
-    st.rerun()
-
-st.success(f"**Active:** {st.session_state.selected_isp}  |  Data loaded automatically")
+st.markdown("### ISP / Partner filter")
+st.caption("Ek se zyada ISP tick karo — sirf selected ka data har page pe dikhega. Naya ISP sheet mein aaya to list mein auto add.")
+render_isp_multiselect(location="main", key="isp_multi_main")
 
 if st.button("🔄 Force Refresh Google Sheet"):
     st.cache_data.clear()
@@ -85,14 +65,15 @@ if st.button("🔄 Force Refresh Google Sheet"):
 if st.session_state.closed_df is not None or st.session_state.open_df is not None:
     st.markdown("### Live Status")
     c1, c2, c3 = st.columns(3)
-    closed_count = len(st.session_state.closed_df) if st.session_state.closed_df is not None else 0
-    open_count = len(st.session_state.open_df) if st.session_state.open_df is not None else 0
-    c1.metric("Closed", closed_count)
-    c2.metric("Open", open_count)
-    c3.metric("ISP", st.session_state.selected_isp)
-    closed = st.session_state.get("closed_df")
-    if closed is not None and not closed.empty and "isp" in closed.columns:
-        vc = closed["isp"].value_counts()
+    closed_f = apply_isp_filter(st.session_state.get("closed_df"))
+    open_f = apply_isp_filter(st.session_state.get("open_df"))
+    closed_count = 0 if closed_f is None else len(closed_f)
+    open_count = 0 if open_f is None else len(open_f)
+    c1.metric("Closed (selected ISP)", closed_count)
+    c2.metric("Open (selected ISP)", open_count)
+    c3.metric("ISP", isp_label())
+    if closed_f is not None and not closed_f.empty and "isp" in closed_f.columns:
+        vc = closed_f["isp"].value_counts()
         st.caption("Tickets by ISP: " + " • ".join(f"{k}={int(v)}" for k, v in vc.items()))
 
 st.markdown("---")

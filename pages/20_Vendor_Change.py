@@ -5,12 +5,11 @@ import os
 from io import BytesIO
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.bootstrap import show_last_update, ensure_ready
+from utils.bootstrap import ensure_ready
 from utils.auto_load import auto_load_tickets
 from utils.firebase_store import firebase_ready, upsert, list_all
 
 st.set_page_config(page_title="Vendor Change | XTRNATE", page_icon="🔄", layout="wide")
-show_last_update()
 
 st.title("🔄 Vendor Change Register")
 st.caption("Remark se vendor change tickets → Firebase save • site-wise restore / status update")

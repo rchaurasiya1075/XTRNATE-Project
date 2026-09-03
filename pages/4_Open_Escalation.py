@@ -8,15 +8,13 @@ from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.escalation import load_escalation_matrix, apply_escalation_to_open, get_escalation_color
+from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps
 
 st.set_page_config(page_title="Open Escalation | XTRNATE", page_icon="🚨", layout="wide")
 
 st.title("🚨 Open Tickets & Live Escalation + Site History")
 
-isp = st.session_state.get('selected_isp')
-if not isp:
-    st.warning("Please select an ISP from the Home page first.")
-    st.stop()
+isp = ensure_ready()
 
 open_df = st.session_state.get('open_df')
 closed_df = st.session_state.get('closed_df')
@@ -26,12 +24,8 @@ if open_df is None or open_df.empty:
     st.warning("No open tickets data found. Please upload from **Upload Data** page.")
     st.stop()
 
-# Filter by ISP
-if isp != "ALL" and 'isp' in open_df.columns:
-    open_df = open_df[open_df['isp'] == isp].copy()
-if closed_df is not None and not closed_df.empty and isp != "ALL" and 'isp' in closed_df.columns:
-    closed_df = closed_df[closed_df['isp'] == isp].copy()
-
+open_df = apply_isp_filter(open_df)
+closed_df = apply_isp_filter(closed_df)
 # Treat "Assign to FE" as Open (already expected in open file, but ensure)
 if 'status' in open_df.columns:
     # Keep all, but highlight Assign to FE
@@ -39,7 +33,7 @@ if 'status' in open_df.columns:
 
 st.markdown(f"**ISP:** `{isp}` | **Open Tickets:** {len(open_df)}")
 
-matrix = load_escalation_matrix(isp if isp != "ALL" else "HCIN")
+matrix = load_escalation_matrix(isp if isp not in ("ALL", "NONE") else (get_selected_isps() or ["HCIN"])[0])
 open_esc = apply_escalation_to_open(open_df, matrix)
 
 # ===================== SUMMARY =====================
@@ -102,9 +96,7 @@ hist_src = pd.DataFrame()
 if closed_df is not None and not closed_df.empty:
     hist_src = closed_df.copy()
 elif raw_df is not None and not raw_df.empty:
-    hist_src = raw_df.copy()
-    if isp != "ALL" and "isp" in hist_src.columns:
-        hist_src = hist_src[hist_src["isp"] == isp].copy()
+    hist_src = apply_isp_filter(raw_df.copy())
 
 if "site_code" not in filtered.columns:
     st.warning("site_code missing in open tickets.")

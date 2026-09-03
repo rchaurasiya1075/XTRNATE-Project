@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.bootstrap import show_last_update
+from utils.bootstrap import ensure_ready
 from utils.google_sheets import load_sheet_as_csv
 from utils.firebase_store import firebase_ready, upsert, get_one, list_all, _now
 from utils.sheet_write import HEADERS, append_last_mile_log, sa_email
@@ -21,7 +21,7 @@ CKT_ID = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
 CKT_GID = "886642043"
 
 st.set_page_config(page_title="Last Mile Update | XTRNATE", page_icon="📍", layout="wide")
-show_last_update()
+ensure_ready()
 
 st.title("Last Mile / LC Contact Update")
 st.caption("Old last mile + LC dikhega • naya data save = Firebase + Google Sheet mein nayi row")

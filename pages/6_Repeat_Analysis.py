@@ -7,16 +7,14 @@ from io import BytesIO
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import filter_by_period
+from utils.bootstrap import ensure_ready, apply_isp_filter
 
 st.set_page_config(page_title="Repeat Analysis | XTRNATE", page_icon="🔁", layout="wide")
 
 st.title("🔁 Repeat Site & Area Analysis")
 st.markdown("State → City → Site Code → Full Ticket Details (Incident ID, Submitted, Resolved, Reason)")
 
-isp = st.session_state.get('selected_isp')
-if not isp:
-    st.warning("Please select an ISP from the Home page first.")
-    st.stop()
+isp = ensure_ready()
 
 closed_df = st.session_state.get('closed_df')
 open_df = st.session_state.get('open_df')
@@ -25,12 +23,8 @@ if closed_df is None or closed_df.empty:
     st.warning("No closed tickets data found. Please upload Closed Tickets Excel from **Upload Data** page.")
     st.stop()
 
-# Filter by ISP
-if isp != "ALL" and 'isp' in closed_df.columns:
-    closed_df = closed_df[closed_df['isp'] == isp].copy()
-if open_df is not None and not open_df.empty and isp != "ALL" and 'isp' in open_df.columns:
-    open_df = open_df[open_df['isp'] == isp].copy()
-
+closed_df = apply_isp_filter(closed_df)
+open_df = apply_isp_filter(open_df)
 st.markdown(f"**Active ISP:** `{isp}` | Closed Records: **{len(closed_df)}** | Open Records: **{len(open_df) if open_df is not None else 0}**")
 
 # Period selector

@@ -10,12 +10,12 @@ import streamlit as st
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
 from utils.data_processing import classify_isp, isp_options
-from utils.bootstrap import show_last_update
+from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 
 st.set_page_config(
     page_title="Monthly SLA Report | XTRNATE", page_icon="📅", layout="wide"
 )
-show_last_update()
+ensure_ready()
 
 st.title("📅 Monthly SLA Report")
 st.caption(
@@ -33,7 +33,8 @@ if closed_df is None or closed_df.empty:
     )
     st.stop()
 
-df = closed_df.copy()
+df = apply_isp_filter(closed_df.copy())
+st.caption(f"Active ISP: **{isp_label()}**")
 
 if "ticket_id" in df.columns:
     df = df.drop_duplicates(subset=["ticket_id"], keep="first")

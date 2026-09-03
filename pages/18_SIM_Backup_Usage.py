@@ -7,7 +7,7 @@ import re
 from io import BytesIO
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.bootstrap import ensure_ready, show_last_update
+from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.google_sheets import load_sheet_as_csv
 from utils.auto_load import auto_load_tickets
 from utils.data_processing import isp_options, classify_isp
@@ -33,8 +33,6 @@ MONTH_ALIAS = {
 }
 
 st.set_page_config(page_title="SIM Backup Usage | XTRNATE", page_icon="📶", layout="wide")
-show_last_update()
-
 st.title("📶 SIM Backup Usage vs BB Down")
 st.caption("Backup SIM data • 10 GB plan • Site list: Branch + State + ISP (Owner ke saare names) sheet se")
 
@@ -228,10 +226,9 @@ if not tix.empty and "site_code" in tix.columns:
 st.markdown("### Filters")
 f1, f2, f3, f4 = st.columns([1.2, 1.2, 1.4, 1.4])
 with f1:
-    opts = isp_options(merged)
-    if not opts:
-        opts = ["ALL"]
-    partner = st.radio("ISP", opts, horizontal=True)
+    partner = isp_label()
+    st.markdown(f"**ISP:** {partner}")
+    st.caption("Top / sidebar se multi-select")
 with f2:
     months_avail = sorted(
         merged["month"].dropna().unique().tolist(),
@@ -246,8 +243,7 @@ with f4:
 view = merged.copy()
 if month_sel:
     view = view[view["month"].isin(month_sel)]
-if partner != "ALL":
-    view = view[view["isp"] == partner]
+view = apply_isp_filter(view)
 view = view[view["usage_gb"] >= min_gb]
 if only_cap:
     view = view[view["usage_gb"] >= PLAN_GB]

@@ -6,14 +6,14 @@ import os
 from io import BytesIO
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.bootstrap import show_last_update
+from utils.bootstrap import ensure_ready
 from utils.google_sheets import load_sheet_as_csv
 
 SHEET_ID = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
 GID = "1240520075"
 
 st.set_page_config(page_title="SIM Inventory | XTRNATE", page_icon="📱", layout="wide")
-show_last_update()
+ensure_ready()
 
 st.title("📱 SIM Inventory")
 st.caption("Same Xtranet sheet • Site / MDN / IP search • Status, Telco, plan limit")

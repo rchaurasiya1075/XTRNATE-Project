@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.bootstrap import show_last_update
+from utils.bootstrap import ensure_ready
 from utils.google_sheets import load_sheet_as_csv
 from utils.firebase_store import firebase_ready, upsert
 from utils.sheet_write import (
@@ -21,7 +21,7 @@ TARGET_GID = "658119379"
 MAIL_GID = "762980214"
 
 st.set_page_config(page_title="LC Master | XTRNATE", page_icon="📋", layout="wide")
-show_last_update()
+ensure_ready()
 
 st.title("LC Master")
 st.caption(

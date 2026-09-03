@@ -7,12 +7,11 @@ import pandas as pd
 import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.bootstrap import ensure_ready, show_last_update
+from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.holiday_sla import PUBLIC, adjust_ticket, parse_extra_dates
 from utils.data_processing import isp_options, classify_isp
 
 st.set_page_config(page_title="Holiday Downtime | XTRNATE", page_icon="🎉", layout="wide")
-show_last_update()
 ensure_ready()
 
 st.title("🎉 Holiday Adjusted Downtime")
@@ -36,8 +35,7 @@ for c in ("submitted_time", "resolved_time"):
 if "isp" not in work.columns and "owner" in work.columns:
     work["isp"] = work["owner"].map(classify_isp)
 
-opts = isp_options(work)
-partner = st.radio("ISP", opts or ["ALL"], horizontal=True)
+partner = isp_label()
 today = date.today()
 c1, c2 = st.columns(2)
 with c1:
@@ -52,10 +50,7 @@ extra_txt = st.text_area(
 )
 extra = parse_extra_dates(extra_txt)
 
-if partner != "ALL" and "isp" in work.columns:
-    view = work[work["isp"] == partner].copy()
-else:
-    view = work.copy()
+view = apply_isp_filter(work)
 
 if "submitted_time" in view.columns:
     start_ts = pd.Timestamp(start_day)

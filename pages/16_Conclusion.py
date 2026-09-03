@@ -8,13 +8,12 @@ import plotly.express as px
 import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.bootstrap import ensure_ready, show_last_update
+from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import detect_category, get_summary_stats, isp_options, classify_isp
 from utils.meeting_deck import build_meeting_pptx
 from utils.remark_tags import apply_tags, dt_hrs
 
 st.set_page_config(page_title="Conclusion | XTRNATE", page_icon="🧠", layout="wide")
-show_last_update()
 ensure_ready()
 
 st.title("🧠 Conclusion Dashboard")
@@ -39,10 +38,7 @@ if "category" in work.columns:
     work.loc[blank, "outage_class"] = work.loc[blank, "category"].astype(str)
 work = apply_tags(work)
 
-opts = isp_options(work)
-if not opts:
-    opts = ["ALL"]
-partner = st.radio("ISP report", opts, horizontal=True)
+partner = isp_label()
 today = date.today()
 c1, c2 = st.columns(2)
 with c1:
@@ -51,17 +47,7 @@ with c2:
     end_day = st.date_input("To", value=today)
 
 def isp_filter(df):
-    if df is None or df.empty:
-        return pd.DataFrame()
-    if partner == "ALL":
-        return df.copy()
-    if "isp" in df.columns:
-        out = df[df["isp"] == partner]
-        if not out.empty:
-            return out.copy()
-    if "owner" in df.columns:
-        return df[df["owner"].map(classify_isp) == partner].copy()
-    return df.copy()
+    return apply_isp_filter(df)
 
 hist = isp_filter(work)
 start_ts, end_ts = pd.Timestamp(start_day), pd.Timestamp(end_day) + pd.Timedelta(days=1)
