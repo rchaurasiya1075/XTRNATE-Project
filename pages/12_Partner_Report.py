@@ -178,8 +178,110 @@ def style_navy(df):
     ])
 
 
+DETAIL_COLS = [
+    "ticket_id",
+    "site_code",
+    "isp",
+    "owner",
+    "submitted_time",
+    "resolved_time",
+    "resolution_hours",
+    "sla_band",
+    "issue_type",
+    "related_to",
+    "problem_class",
+    "problem_reported",
+    "reason",
+    "root_cause",
+    "final_action",
+    "state",
+    "city",
+]
+
+
+def ticket_view(df):
+    """Compact ticket table: times formatted, hours rounded."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+    cols = [c for c in DETAIL_COLS if c in df.columns]
+    if not cols:
+        return df.head(0)
+    out = df.loc[:, cols].copy()
+    if "resolution_hours" in out.columns:
+        out["resolution_hours"] = pd.to_numeric(out["resolution_hours"], errors="coerce").round(2)
+    for c in ("submitted_time", "resolved_time"):
+        if c in out.columns:
+            out[c] = pd.to_datetime(out[c], errors="coerce").dt.strftime("%d-%b-%Y %H:%M")
+    sort_src = "submitted_time" if "submitted_time" in df.columns else cols[0]
+    try:
+        out = out.assign(_s=pd.to_datetime(df[sort_src], errors="coerce").values)
+        out = out.sort_values("_s", ascending=False).drop(columns=["_s"])
+    except Exception:
+        pass
+    return out.reset_index(drop=True)
+
+
+def show_ticket_groups(groups, prefix="", empty_msg="Is period mein is option ke tickets nahi."):
+    """groups = [(label, dataframe), ...] — expander per option with full tickets."""
+    groups = [(str(lab), g) for lab, g in groups if g is not None and not getattr(g, "empty", True)]
+    if not groups:
+        st.caption(empty_msg)
+        return
+    st.markdown("**Tickets — har option (expand karke dekho)**")
+    for lab, g in groups:
+        n = len(g)
+        short = lab if len(lab) <= 80 else lab[:77] + "…"
+        title = f"{prefix}{short}   ·   {n} ticket{'s' if n != 1 else ''}"
+        with st.expander(title, expanded=False):
+            st.dataframe(
+                ticket_view(g),
+                use_container_width=True,
+                height=min(420, 48 + 32 * min(n, 11)),
+            )
+
+
+def site_repeat_summary(part):
+    if part is None or part.empty or "site_code" not in part.columns:
+        return pd.DataFrame()
+    if "ticket_id" in part.columns:
+        named = {"tickets": ("ticket_id", "count")}
+    else:
+        named = {"tickets": ("site_code", "count")}
+    if "resolution_hours" in part.columns:
+        named["avg_hrs"] = ("resolution_hours", "mean")
+    if "state" in part.columns:
+        named["state"] = ("state", "first")
+    if "city" in part.columns:
+        named["city"] = ("city", "first")
+    if "isp" in part.columns:
+        named["isp"] = ("isp", "first")
+    g = part.groupby("site_code", dropna=False).agg(**named).reset_index()
+    if "avg_hrs" in g.columns:
+        g["avg_hrs"] = g["avg_hrs"].round(2)
+    return g.sort_values("tickets", ascending=False).reset_index(drop=True)
+
+
+def repeat_buckets(selected):
+    """[(label, site_index, tickets_df), ...] for 1 / 2 / 3 / 4 / 5+."""
+    if selected is None or selected.empty or "site_code" not in selected.columns:
+        return []
+    vc = selected.groupby("site_code").size()
+    specs = [
+        ("SINGLE TIME CALL LOG", vc[vc == 1].index),
+        ("2 TIMES CALL LOG", vc[vc == 2].index),
+        ("3 TIME CALL LOG", vc[vc == 3].index),
+        ("4 Time Repeat", vc[vc == 4].index),
+        ("5+ Time Repeat", vc[vc >= 5].index),
+    ]
+    out = []
+    for lab, sites in specs:
+        part = selected[selected["site_code"].isin(sites)].copy()
+        out.append((lab, sites, part))
+    return out
+
+
 st.title("📄 Partner Performance Report")
-st.caption("Date range • Others/Force Majeure/Housekeeping remark split • Vendor Change alag")
+st.caption("Date range • 4 points ke har option ke tickets • Repeat sites + detail • Vendor Change alag")
 
 ensure_ready()
 
@@ -405,6 +507,12 @@ rep_df = pd.DataFrame(rep)
 
 st.subheader("1. Resolution Time Buckets (SLA)")
 st.dataframe(style_blue(sla_df), use_container_width=True, hide_index=True)
+st.caption("Har SLA option ke tickets — Vendor Change jaisa detail.")
+show_ticket_groups(
+    [(band, selected[selected["sla_band"] == band]) for band in SLA_ORDER],
+    prefix="SLA · ",
+    empty_msg="Is period mein SLA tickets nahi.",
+)
 
 st.subheader("2. Problem Classification & Avg Resolution Time")
 st.dataframe(style_navy(cls_df), use_container_width=True, hide_index=True)
@@ -432,6 +540,30 @@ for name in split_names:
     })
 st.dataframe(pd.DataFrame(split_rows), use_container_width=True, hide_index=True)
 
+st.caption("Har classification ke tickets.")
+show_ticket_groups(
+    [(cls, selected[selected["issue_type"] == cls]) for cls in all_cls],
+    prefix="Class · ",
+    empty_msg="Is period mein classification tickets nahi.",
+)
+
+if "problem_reported" in selected.columns:
+    pr = selected["problem_reported"].fillna("").astype(str).str.strip()
+    pr = pr.replace({"nan": "", "None": "", "--": "", "none": ""})
+    tmp = selected.copy()
+    tmp["_pr"] = pr
+    tmp = tmp[tmp["_pr"] != ""]
+    counts = tmp["_pr"].value_counts()
+    if not counts.empty:
+        st.subheader("2c. Problem Reported — har option ke tickets")
+        top_n = 30
+        names = list(counts.index[:top_n])
+        groups = [(name, tmp[tmp["_pr"] == name]) for name in names]
+        rest = tmp[~tmp["_pr"].isin(names)]
+        if not rest.empty:
+            groups.append((f"Other Problem Reported ({len(rest)})", rest))
+        show_ticket_groups(groups, prefix="Reported · ")
+
 col_a, col_b = st.columns(2)
 with col_a:
     st.subheader("3. Problem Related To")
@@ -443,11 +575,56 @@ with col_b:
     st.subheader("4. Repeat Call Analysis")
     st.dataframe(style_blue(rep_df), use_container_width=True, hide_index=True)
 
+rel_opts = RELATED_ORDER + [
+    x for x in selected["related_to"].dropna().unique() if x not in RELATED_ORDER
+]
+st.markdown("#### 3. Problem Related To — tickets")
+st.caption("Third Party, House keeping, Force Majeure, Vendor Change… har option ke tickets.")
+show_ticket_groups(
+    [(rel, selected[selected["related_to"] == rel]) for rel in rel_opts],
+    prefix="Related · ",
+    empty_msg="Problem Related tickets nahi.",
+)
+
+st.markdown("#### 4. Repeat Call Analysis — sites + tickets")
+st.caption(
+    "Jo number table mein dikha (1 time / 2 times / … / 5+) uske **kaun se site** aur **kaun se tickets** "
+    "yahan expand karke poori detail ke saath dikhenge."
+)
+rb = repeat_buckets(selected)
+repeat_site_frames = []
+repeat_ticket_frames = []
+for lab, sites, part in rb:
+    n_sites = int(len(sites))
+    n_tt = int(len(part))
+    if n_sites == 0:
+        continue
+    is_hot = lab.startswith("5+")
+    with st.expander(
+        f"{lab}   ·   {n_sites} site{'s' if n_sites != 1 else ''}   ·   {n_tt} ticket{'s' if n_tt != 1 else ''}",
+        expanded=is_hot,
+    ):
+        st.markdown("**Sites in this bucket**")
+        site_tab = site_repeat_summary(part)
+        if not site_tab.empty:
+            st.dataframe(site_tab, use_container_width=True, height=min(320, 48 + 32 * min(len(site_tab), 8)))
+            tagged = site_tab.copy()
+            tagged.insert(0, "repeat_bucket", lab)
+            repeat_site_frames.append(tagged)
+        st.markdown("**Tickets of these sites**")
+        st.dataframe(
+            ticket_view(part),
+            use_container_width=True,
+            height=min(420, 48 + 32 * min(n_tt, 11)),
+        )
+        tagged_t = ticket_view(part).copy()
+        tagged_t.insert(0, "repeat_bucket", lab)
+        repeat_ticket_frames.append(tagged_t)
+
 vc = selected[selected["issue_type"] == "Vendor Change"]
 if not vc.empty:
     st.subheader("Vendor Change tickets (this period)")
-    cols = [c for c in ["ticket_id", "site_code", "submitted_time", "resolved_time", "resolution_hours", "reason", "root_cause", "state", "city"] if c in vc.columns]
-    st.dataframe(vc[cols], use_container_width=True, height=280)
+    st.dataframe(ticket_view(vc), use_container_width=True, height=280)
 
 
 def to_xlsx():
@@ -458,12 +635,17 @@ def to_xlsx():
         if not rel_df.empty:
             rel_df.to_excel(writer, index=False, sheet_name="Related_To")
         rep_df.to_excel(writer, index=False, sheet_name="Repeat")
-        cols = [c for c in [
-            "ticket_id", "site_code", "submitted_time", "resolved_time", "resolution_hours",
-            "issue_type", "related_to", "owner", "isp", "state", "city", "down_time_min",
-            "reason", "root_cause", "problem_reported",
-        ] if c in selected.columns]
-        selected[cols].to_excel(writer, index=False, sheet_name="Ticket_Detail")
+        tv = ticket_view(selected)
+        if not tv.empty:
+            tv.to_excel(writer, index=False, sheet_name="Ticket_Detail")
+        if repeat_site_frames:
+            pd.concat(repeat_site_frames, ignore_index=True).to_excel(
+                writer, index=False, sheet_name="Repeat_Sites"
+            )
+        if repeat_ticket_frames:
+            pd.concat(repeat_ticket_frames, ignore_index=True).to_excel(
+                writer, index=False, sheet_name="Repeat_Tickets"
+            )
     return out.getvalue()
 
 
@@ -474,3 +656,4 @@ st.download_button(
     file_name=f"XTRNATE_{partner}_{str(period_label).replace(' ', '_')}_Report.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
+
