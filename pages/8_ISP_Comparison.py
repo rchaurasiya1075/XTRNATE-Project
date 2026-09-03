@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import detect_category, get_summary_stats, isp_options, classify_isp
 from utils.isp_deck import build_isp_pptx
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="ISP Comparison | XTRNATE", page_icon="⚖️", layout="wide")
 st.title("⚖️ ISP Report")
@@ -324,26 +325,30 @@ else:
     detail = detail.loc[:, ~detail.columns.duplicated()]
     st.dataframe(detail, use_container_width=True, height=420)
 
-    buf = BytesIO()
-    with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
-        pd.DataFrame({
+    sheets = {
+        "Cover": pd.DataFrame({
             "Field": ["ISP", "From", "To", "Date on", "Tickets", "Open now"],
             "Value": [partner, str(start_day), str(end_day), date_on, total, len(open_view)],
-        }).to_excel(w, index=False, sheet_name="Cover")
-        cls.to_excel(w, index=False, sheet_name="Outage_Class")
-        if not split.empty and show_s:
-            split[show_s].to_excel(w, index=False, sheet_name="Vendor_Change")
-        daily.to_excel(w, index=False, sheet_name="Daily")
-        if not stt.empty:
-            stt.to_excel(w, index=False, sheet_name="State")
-        if not site.empty:
-            site.to_excel(w, index=False, sheet_name="Sites")
-        if not rep_sum.empty:
-            rep_sum.to_excel(w, index=False, sheet_name="Repeat_3M_6M")
-        if not rep_detail.empty:
-            rep_detail.to_excel(w, index=False, sheet_name="Repeat_Tickets")
-        detail.to_excel(w, index=False, sheet_name="Tickets")
-
+        }),
+        "Outage_Class": cls,
+    }
+    if not split.empty and show_s:
+        sheets["Vendor_Change"] = split[show_s]
+    sheets["Daily"] = daily
+    if not stt.empty:
+        sheets["State"] = stt
+    if not site.empty:
+        sheets["Sites"] = site
+    if not rep_sum.empty:
+        sheets["Repeat_3M_6M"] = rep_sum
+    if not rep_detail.empty:
+        sheets["Repeat_Tickets"] = rep_detail
+    sheets["Tickets"] = detail
+    buf_bytes = excel_bytes(
+        sheets,
+        title=f"ISP Report  ·  {partner}",
+        subtitle=f"{start_day} to {end_day}  •  {total} tickets",
+    )
     meta = {
         "isp": partner,
         "from": start_day.strftime("%d %b %Y"),
@@ -365,7 +370,7 @@ else:
     with d1:
         st.download_button(
             f"📥 Excel — {partner} full data",
-            data=buf.getvalue(),
+            data=buf_bytes,
             file_name=f"XTRNATE_{partner}_{start_day}_to_{end_day}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,

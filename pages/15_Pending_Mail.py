@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, get_selected_isps, isp_label
 from utils.google_sheets import extract_sheet_id
 from utils.data_processing import classify_isp, isp_options
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="Pending Mail | XTRNATE", page_icon="📧", layout="wide")
 ensure_ready()
@@ -249,15 +250,17 @@ def render_mail(partner, src):
     det = pd.DataFrame(rows)
     st.dataframe(det, use_container_width=True, height=420)
 
-    buf = BytesIO()
-    with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
-        pd.DataFrame(reason_tbl, columns=["OUTAGE REASON", brand]).to_excel(w, index=False, sheet_name="Reason")
-        pd.DataFrame(loc_tbl, columns=["LOCATION", brand]).to_excel(w, index=False, sheet_name="Location")
-        det.to_excel(w, index=False, sheet_name="Pending")
-
     st.download_button(
         f"📥 Download {partner} pending mail Excel",
-        data=buf.getvalue(),
+        data=excel_bytes(
+            {
+                "Reason": pd.DataFrame(reason_tbl, columns=["OUTAGE REASON", brand]),
+                "Location": pd.DataFrame(loc_tbl, columns=["LOCATION", brand]),
+                "Pending": det,
+            },
+            title=f"Pending Mail  ·  {partner}",
+            subtitle=datetime.now().strftime("%d-%b-%Y"),
+        ),
         file_name=f"OPEN_PENDING_{partner}_{datetime.now().strftime('%Y%m%d')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         key=f"mail_xlsx_{partner}",

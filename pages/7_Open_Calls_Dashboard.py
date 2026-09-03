@@ -9,6 +9,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.escalation import load_escalation_matrix, apply_escalation_to_open, get_escalation_color
 from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="Open Calls Dashboard | XTRNATE", page_icon="📞", layout="wide")
 
@@ -171,15 +172,14 @@ else:
             hist_cols = [c for c in hist_cols if c in hist.columns]
             st.dataframe(hist[hist_cols], use_container_width=True, height=380)
 
-            def to_excel(df):
-                output = BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df.to_excel(writer, index=False, sheet_name='History')
-                return output.getvalue()
-
             st.download_button(
                 f"📥 Download History of {selected_site} only",
-                data=to_excel(hist[hist_cols]),
+                data=excel_bytes(
+                    hist[hist_cols],
+                    title=f"Site History  ·  {selected_site}",
+                    subtitle=f"ISP {isp}",
+                    sheet_name="History",
+                ),
                 file_name=f"History_{selected_site}_{isp}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
@@ -188,15 +188,13 @@ else:
 
 # ========== DOWNLOAD ==========
 st.markdown("---")
-def to_excel_open(df):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Open_Calls')
-    return output.getvalue()
-
 st.download_button(
     "📥 Download Filtered Open Calls",
-    data=to_excel_open(show_df),
+    data=excel_bytes(
+        show_df,
+        title=f"Open Calls  ·  {isp}",
+        sheet_name="Open_Calls",
+    ),
     file_name=f"XTRNATE_Open_Calls_{isp}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )

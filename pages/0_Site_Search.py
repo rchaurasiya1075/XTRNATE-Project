@@ -8,6 +8,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
 from utils.site_search import render_site_history_panel
 from utils.bootstrap import ensure_ready
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="Site Search | XTRNATE", page_icon="🔍", layout="wide")
 ensure_ready()
@@ -98,10 +99,11 @@ if q and q.strip():
             exp_col1, exp_col2, _ = st.columns([1.5, 1.5, 3])
             
             # Helper for Excel export
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                filtered_history.to_excel(writer, index=False, sheet_name="Site_History")
-            excel_data = buffer.getvalue()
+            excel_data = excel_bytes(
+                filtered_history,
+                title=f"Site History  ·  {site_code}",
+                sheet_name="Site_History",
+            )
 
             with exp_col1:
                 st.download_button(

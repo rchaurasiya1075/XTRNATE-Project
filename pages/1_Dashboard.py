@@ -10,6 +10,7 @@ from utils.data_processing import filter_by_period, get_summary_stats
 from utils.escalation import load_escalation_matrix, apply_escalation_to_open
 from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps
 from utils.site_search import render_site_history_panel
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="Dashboard | XTRNATE", page_icon="📊", layout="wide")
 
@@ -118,7 +119,11 @@ if open_df is not None and not open_df.empty:
     sort_col = 'open_hours' if 'open_hours' in open_with_esc.columns else display_cols[0]
     show = open_with_esc[display_cols].sort_values(sort_col, ascending=False)
     st.dataframe(show, use_container_width=True, height=420)
-    st.download_button("📥 Download Open Calls", show.to_csv(index=False).encode('utf-8'),
-                       file_name=f"Open_Calls_{isp}_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
+    st.download_button(
+        "📥 Download Open Calls",
+        data=excel_bytes(show, title=f"Dashboard Open Calls  ·  {isp}", sheet_name="Open_Calls"),
+        file_name=f"Open_Calls_{isp}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 else:
     st.info("No open tickets right now.")

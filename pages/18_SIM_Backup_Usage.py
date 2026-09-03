@@ -11,6 +11,7 @@ from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.google_sheets import load_sheet_as_csv
 from utils.auto_load import auto_load_tickets
 from utils.data_processing import isp_options, classify_isp
+from utils.excel_export import excel_bytes
 
 SHEET_ID = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
 USAGE_GID = "710549453"
@@ -348,16 +349,12 @@ if pick and pick != "—":
             sortc = hc[1] if len(hc) > 1 else hc[0]
             st.dataframe(hist[hc].sort_values(sortc, ascending=False), use_container_width=True, height=280)
 
-buf = BytesIO()
-with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
-    show.to_excel(w, index=False, sheet_name="Site_Usage_Downs")
-    mon.to_excel(w, index=False, sheet_name="Month_ISP")
-    if not split.empty:
-        split.to_excel(w, index=False, sheet_name="ISP_Split")
-
+sim_sheets = {"Site_Usage_Downs": show, "Month_ISP": mon}
+if not split.empty:
+    sim_sheets["ISP_Split"] = split
 st.download_button(
     "📥 Excel — SIM usage + BB downs",
-    data=buf.getvalue(),
+    data=excel_bytes(sim_sheets, title="SIM Backup Usage", subtitle="Site usage + BB downs"),
     file_name="XTRNATE_SIM_Backup_Usage.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )

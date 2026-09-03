@@ -8,6 +8,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready
 from utils.auto_load import auto_load_tickets
 from utils.firebase_store import firebase_ready, upsert, list_all
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="Vendor Change | XTRNATE", page_icon="🔄", layout="wide")
 
@@ -122,6 +123,9 @@ if pick_site and pick_site != "—":
             st.rerun()
 
 if not saved_df.empty:
-    buf = BytesIO()
-    saved_df.to_excel(buf, index=False)
-    st.download_button("📥 Excel vendor change register", data=buf.getvalue(), file_name="vendor_change_firebase.xlsx")
+    st.download_button(
+        "📥 Excel vendor change register",
+        data=excel_bytes(saved_df, title="Vendor Change Register", sheet_name="Vendor_Change"),
+        file_name="vendor_change_firebase.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )

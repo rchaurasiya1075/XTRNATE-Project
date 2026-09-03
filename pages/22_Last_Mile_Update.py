@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready
 from utils.google_sheets import load_sheet_as_csv
 from utils.firebase_store import firebase_ready, upsert, get_one, list_all, _now
+from utils.excel_export import excel_bytes
 from utils.sheet_write import HEADERS, append_last_mile_log, sa_email
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -243,9 +244,12 @@ if firebase_ready():
                 "old_lc_name", "new_lc_name", "old_lc_contact", "new_lc_contact", "note",
             ] if c in hdf.columns]
             st.dataframe(hdf[cols].sort_values(cols[0] if cols else hdf.columns[0], ascending=False), use_container_width=True, height=360)
-            buf = BytesIO()
-            hdf.to_excel(buf, index=False)
-            st.download_button("Excel last-mile history", data=buf.getvalue(), file_name="last_mile_updates.xlsx")
+            st.download_button(
+                "Excel last-mile history",
+                data=excel_bytes(hdf[cols] if cols else hdf, title="Last Mile Updates", sheet_name="History"),
+                file_name="last_mile_updates.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
         else:
             st.caption("Abhi koi update save nahi.")
     except Exception as e:

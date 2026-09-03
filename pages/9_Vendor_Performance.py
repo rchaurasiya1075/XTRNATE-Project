@@ -8,6 +8,7 @@ from io import BytesIO
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import filter_by_period, get_summary_stats
 from utils.bootstrap import ensure_ready, apply_isp_filter
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="Vendor Performance | XTRNATE", page_icon="🏭", layout="wide")
 
@@ -182,15 +183,14 @@ st.dataframe(v_data[detail_cols].sort_values(
 ), use_container_width=True, height=400)
 
 # Download
-def to_excel(dataframe):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        dataframe.to_excel(writer, index=False, sheet_name='Vendor')
-    return output.getvalue()
-
 st.download_button(
     "📥 Download Vendor Summary",
-    data=to_excel(vendor_stats),
+    data=excel_bytes(
+        vendor_stats,
+        title=f"Vendor Performance  ·  {isp}",
+        subtitle=period,
+        sheet_name="Vendor",
+    ),
     file_name=f"XTRNATE_Vendor_Performance_{isp}_{period.replace(' ', '_')}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )

@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import process_closed_tickets, classify_isp, isp_options
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
+from utils.excel_export import excel_bytes
 
 st.set_page_config(
     page_title="Partner Report | XTRNATE", page_icon="📄", layout="wide"
@@ -628,25 +629,25 @@ if not vc.empty:
 
 
 def to_xlsx():
-    out = BytesIO()
-    with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
-        sla_df.to_excel(writer, index=False, sheet_name="SLA_Buckets")
-        cls_df.to_excel(writer, index=False, sheet_name="Classification")
-        if not rel_df.empty:
-            rel_df.to_excel(writer, index=False, sheet_name="Related_To")
-        rep_df.to_excel(writer, index=False, sheet_name="Repeat")
-        tv = ticket_view(selected)
-        if not tv.empty:
-            tv.to_excel(writer, index=False, sheet_name="Ticket_Detail")
-        if repeat_site_frames:
-            pd.concat(repeat_site_frames, ignore_index=True).to_excel(
-                writer, index=False, sheet_name="Repeat_Sites"
-            )
-        if repeat_ticket_frames:
-            pd.concat(repeat_ticket_frames, ignore_index=True).to_excel(
-                writer, index=False, sheet_name="Repeat_Tickets"
-            )
-    return out.getvalue()
+    sheets = {
+        "SLA_Buckets": sla_df,
+        "Classification": cls_df,
+    }
+    if not rel_df.empty:
+        sheets["Related_To"] = rel_df
+    sheets["Repeat"] = rep_df
+    tv = ticket_view(selected)
+    if not tv.empty:
+        sheets["Ticket_Detail"] = tv
+    if repeat_site_frames:
+        sheets["Repeat_Sites"] = pd.concat(repeat_site_frames, ignore_index=True)
+    if repeat_ticket_frames:
+        sheets["Repeat_Tickets"] = pd.concat(repeat_ticket_frames, ignore_index=True)
+    return excel_bytes(
+        sheets,
+        title=f"Partner Performance Report  ·  {partner}",
+        subtitle=f"{partner}  •  {period_label}  •  {len(selected)} tickets",
+    )
 
 
 st.markdown("---")

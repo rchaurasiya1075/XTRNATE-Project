@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
 from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import classify_isp, isp_options
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="VPN Update | XTRNATE", page_icon="📡", layout="wide")
 ensure_ready()
@@ -331,25 +332,26 @@ sum_df.loc[len(sum_df)] = ["HO Open (manual)", int(ho_open)]
 sum_df.loc[len(sum_df)] = ["Branch Open", int(branch_sites)]
 sum_df.loc[len(sum_df)] = ["Backup running (manual)", int(backup_n)]
 sum_df.loc[len(sum_df)] = ["Branch down (no backup)", int(down_n)]
-buf = BytesIO()
-with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
-    sum_df.to_excel(w, index=False, sheet_name="Snapshot")
-    xl_parts = [
-        ("Open", open_now), ("Old_Open", old_open), ("Raised", today_raised),
-        ("Call_On_Hold", call_hold),
-        ("Old_Resolved", old_resolved), ("Same_Day_Resolved", same_day_resolved),
-        ("Celerity_Open", celerity_open), ("Hicom_Open", hicom_open),
-    ]
-    for v in other_vendors:
-        xl_parts.append((str(v)[:28], open_now[open_now["vendor"] == v]))
-    for name, df in xl_parts:
-        cols = [c for c in show_cols if c in df.columns]
-        if cols and not df.empty:
-            df[cols].to_excel(w, index=False, sheet_name=name[:31])
+xl_parts = {
+    "Snapshot": sum_df,
+}
+for name, df in [
+    ("Open", open_now), ("Old_Open", old_open), ("Raised", today_raised),
+    ("Call_On_Hold", call_hold),
+    ("Old_Resolved", old_resolved), ("Same_Day_Resolved", same_day_resolved),
+    ("Celerity_Open", celerity_open), ("Hicom_Open", hicom_open),
+] + [(str(v)[:28], open_now[open_now["vendor"] == v]) for v in other_vendors]:
+    cols = [c for c in show_cols if c in df.columns]
+    if cols and not df.empty:
+        xl_parts[name] = df[cols]
 
 st.download_button(
     f"📥 Excel VPN Update {dlabel}",
-    data=buf.getvalue(),
+    data=excel_bytes(
+        xl_parts,
+        title=f"VPN / Daily Update  ·  {dlabel}",
+        subtitle=str(ref_day),
+    ),
     file_name=f"XTRANET_VPN_Update_{ref_day}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )

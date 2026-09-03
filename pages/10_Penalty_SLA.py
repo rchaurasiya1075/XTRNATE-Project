@@ -6,15 +6,11 @@ import os
 from io import BytesIO
 from datetime import datetime
 
-# Openpyxl for Professional Excel Formatting
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
-
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import filter_by_period, isp_options, classify_isp
 from utils.auto_load import auto_load_tickets
 from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps, isp_label
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="Penalty & SLA | XTRNATE", page_icon="📜", layout="wide")
 ensure_ready()
@@ -227,71 +223,6 @@ st.caption("Har site: kitni baar down | avg/max hours | total downtime | estimat
 tab_labels = [f"{n} Sites" for n in isp_names] + ["📋 Combined Data"]
 tabs = st.tabs(tab_labels)
 
-def get_styled_excel_bytes(site_map, combined_df):
-    out = BytesIO()
-    wb = openpyxl.Workbook()
-    wb.remove(wb.active)
-
-    font_family = "Segoe UI"
-    header_font = Font(name=font_family, size=11, bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="0F172A", end_color="0F172A", fill_type="solid")
-    alt_row_fill = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
-    data_font = Font(name=font_family, size=10, color="000000")
-    site_font = Font(name=font_family, size=10, bold=True, color="1E3A8A")
-    thin_border = Border(
-        left=Side(style="thin", color="CBD5E1"),
-        right=Side(style="thin", color="CBD5E1"),
-        top=Side(style="thin", color="CBD5E1"),
-        bottom=Side(style="thin", color="CBD5E1"),
-    )
-    align_center = Alignment(horizontal="center", vertical="center")
-    align_left = Alignment(horizontal="left", vertical="center")
-    align_right = Alignment(horizontal="right", vertical="center")
-
-    sheets_to_create = []
-    for name, sdf in site_map.items():
-        if sdf is not None and not sdf.empty:
-            sheets_to_create.append((f"{str(name)[:22]}_Sites", sdf))
-    if combined_df is not None and not combined_df.empty:
-        sheets_to_create.append(("Combined_Sites", combined_df))
-
-    for sheet_name, df_data in sheets_to_create:
-        ws = wb.create_sheet(title=sheet_name[:31])
-        headers = list(df_data.columns)
-        ws.append(headers)
-        for col_num in range(1, len(headers) + 1):
-            cell = ws.cell(row=1, column=col_num)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = align_center
-            cell.border = thin_border
-            ws.row_dimensions[1].height = 26
-        for row_idx, row in enumerate(df_data.itertuples(index=False), start=2):
-            ws.append(list(row))
-            ws.row_dimensions[row_idx].height = 20
-            is_alt = (row_idx % 2 == 0)
-            for col_idx in range(1, len(headers) + 1):
-                cell = ws.cell(row=row_idx, column=col_idx)
-                cell.border = thin_border
-                cell.font = data_font
-                if is_alt:
-                    cell.fill = alt_row_fill
-                header_name = str(headers[col_idx - 1]).lower()
-                if "site" in header_name:
-                    cell.font = site_font
-                    cell.alignment = align_center
-                elif any(k in header_name for k in ["hrs", "min", "count", "penalty", "inr"]):
-                    cell.alignment = align_right
-                else:
-                    cell.alignment = align_left
-        for col in ws.columns:
-            max_len = max(len(str(cell.value or "")) for cell in col)
-            col_letter = get_column_letter(col[0].column)
-            ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
-
-    wb.save(out)
-    return out.getvalue()
-
 for i, name in enumerate(isp_names):
     with tabs[i]:
         sdf = site_map[name]
@@ -301,10 +232,15 @@ for i, name in enumerate(isp_names):
             st.metric(f"Unique sites ({name})", len(sdf))
             st.dataframe(sdf, use_container_width=True, height=420)
             st.download_button(
-                f"📥 Download {name} Site Summary (CSV)",
-                sdf.to_csv(index=False).encode("utf-8"),
-                file_name=f"Penalty_Sites_{name}_{period.replace(' ', '_')}.csv",
-                mime="text/csv",
+                f"📥 Download {name} Site Summary (Excel)",
+                excel_bytes(
+                    sdf,
+                    title=f"Penalty Site Summary  ·  {name}",
+                    subtitle=period,
+                    sheet_name="Sites",
+                ),
+                file_name=f"Penalty_Sites_{name}_{period.replace(' ', '_')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key=f"sites_dl_{i}_{name}",
             )
 
@@ -321,9 +257,19 @@ with tabs[-1]:
         st.info("No data available to display")
     else:
         st.dataframe(combined, use_container_width=True, height=420)
+        penalty_sheets = {}
+        for name in isp_names:
+            sdf = site_map[name]
+            if sdf is not None and not sdf.empty:
+                penalty_sheets[f"{str(name)[:22]}_Sites"] = sdf
+        penalty_sheets["Combined_Sites"] = combined
         st.download_button(
             "📊 Download Colorful Formatted Excel Report",
-            data=get_styled_excel_bytes(site_map, combined),
+            data=excel_bytes(
+                penalty_sheets,
+                title="Penalty & SLA Report",
+                subtitle=period,
+            ),
             file_name=f"XTRNATE_Formatted_Penalty_Report_{period.replace(' ', '_')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,

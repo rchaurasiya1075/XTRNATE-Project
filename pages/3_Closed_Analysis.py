@@ -9,6 +9,7 @@ from io import BytesIO
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import filter_by_period, get_summary_stats
 from utils.bootstrap import ensure_ready, apply_isp_filter
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="Closed Analysis | XTRNATE", page_icon="📈", layout="wide")
 
@@ -117,15 +118,14 @@ st.markdown("---")
 st.subheader("Detailed Data")
 st.dataframe(filtered, use_container_width=True, height=350)
 
-def to_excel(df):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Analysis')
-    return output.getvalue()
-
 st.download_button(
     label="📥 Download Filtered Data as Excel",
-    data=to_excel(filtered),
+    data=excel_bytes(
+        filtered,
+        title=f"Closed Tickets Analysis  ·  {isp}",
+        subtitle=period,
+        sheet_name="Analysis",
+    ),
     file_name=f"XTRNATE_Closed_{isp}_{period.replace(' ', '_')}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )

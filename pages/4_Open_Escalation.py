@@ -9,6 +9,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.escalation import load_escalation_matrix, apply_escalation_to_open, get_escalation_color
 from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="Open Escalation | XTRNATE", page_icon="🚨", layout="wide")
 
@@ -157,15 +158,14 @@ else:
     a4.metric("3+ in 6M", int((auto["6M downs"] >= 3).sum()))
     st.dataframe(auto, use_container_width=True, height=480)
 
-    def to_excel_auto(df):
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            df.to_excel(writer, index=False, sheet_name="Open_Sites_History")
-        return output.getvalue()
-
     st.download_button(
         "📥 Download ALL open sites history sheet",
-        data=to_excel_auto(auto),
+        data=excel_bytes(
+            auto,
+            title=f"Open Sites History  ·  {isp}",
+            subtitle="1M / 3M / 6M downs per open site",
+            sheet_name="Open_Sites_History",
+        ),
         file_name=f"XTRNATE_OpenSites_History_{isp}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
@@ -232,15 +232,14 @@ else:
                 st.dataframe(history[hist_cols], use_container_width=True, height=400)
 
                 # Download history
-                def to_excel(df):
-                    output = BytesIO()
-                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        df.to_excel(writer, index=False, sheet_name='Site_History')
-                    return output.getvalue()
-
                 st.download_button(
                     f"📥 Download History of {selected_open_site}",
-                    data=to_excel(history[hist_cols]),
+                    data=excel_bytes(
+                        history[hist_cols],
+                        title=f"Site History  ·  {selected_open_site}",
+                        subtitle=f"ISP {isp}",
+                        sheet_name="Site_History",
+                    ),
                     file_name=f"XTRNATE_History_{selected_open_site}_{isp}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
@@ -257,15 +256,13 @@ if 'open_hours' in filtered.columns:
     st.plotly_chart(fig, use_container_width=True)
 
 # Download open list
-def to_excel_open(df):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Open_Tickets')
-    return output.getvalue()
-
 st.download_button(
     "📥 Download Current Open Tickets",
-    data=to_excel_open(filtered[display_cols]),
+    data=excel_bytes(
+        filtered[display_cols],
+        title=f"Open Tickets  ·  {isp}",
+        sheet_name="Open_Tickets",
+    ),
     file_name=f"XTRNATE_Open_{isp}.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )

@@ -12,6 +12,7 @@ from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import detect_category, get_summary_stats, isp_options, classify_isp
 from utils.meeting_deck import build_meeting_pptx
 from utils.remark_tags import apply_tags, dt_hrs
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="Conclusion | XTRNATE", page_icon="🧠", layout="wide")
 ensure_ready()
@@ -271,22 +272,26 @@ pack = {
     "change_table": chg_table,
 }
 
-xl = BytesIO()
-with pd.ExcelWriter(xl, engine="xlsxwriter") as w:
-    cls.to_excel(w, index=False, sheet_name="Outage")
-    tags.to_excel(w, index=False, sheet_name="RemarkTags")
-    if not rep_sum.empty:
-        rep_sum.to_excel(w, index=False, sheet_name="Repeat")
-    if not site_tbl.empty:
-        site_tbl.to_excel(w, index=False, sheet_name="Sites")
-    shown[cols].to_excel(w, index=False, sheet_name="Drill")
-    view[cols].to_excel(w, index=False, sheet_name="AllTickets")
-
+xl_sheets = {
+    "Outage": cls,
+    "RemarkTags": tags,
+}
+if not rep_sum.empty:
+    xl_sheets["Repeat"] = rep_sum
+if not site_tbl.empty:
+    xl_sheets["Sites"] = site_tbl
+xl_sheets["Drill"] = shown[cols]
+xl_sheets["AllTickets"] = view[cols]
+xl_bytes = excel_bytes(
+    xl_sheets,
+    title=f"Conclusion  ·  {partner}",
+    subtitle=f"{start_day} to {end_day}",
+)
 d1, d2 = st.columns(2)
 with d1:
     st.download_button(
         f"📥 Excel — {partner} conclusion",
-        data=xl.getvalue(),
+        data=xl_bytes,
         file_name=f"XTRNATE_Conclusion_{partner}_{start_day}_{end_day}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,

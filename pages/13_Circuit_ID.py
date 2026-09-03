@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 from utils.data_processing import classify_isp
 from utils.bootstrap import ensure_ready
+from utils.excel_export import excel_bytes
 
 st.set_page_config(page_title="Circuit ID | XTRNATE", page_icon="🔌", layout="wide")
 ensure_ready()
@@ -75,11 +76,8 @@ def isp_display(val):
     return name
 
 # Helper function to generate Excel binary buffer
-def get_excel_download(dataframe: pd.DataFrame, sheet_name="Circuit_Data"):
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        dataframe.to_excel(writer, index=False, sheet_name=sheet_name)
-    return buffer.getvalue()
+def get_excel_download(dataframe: pd.DataFrame, sheet_name="Circuit_Data", title="Circuit ID"):
+    return excel_bytes(dataframe, title=title, sheet_name=sheet_name)
 
 st.markdown("""
 <div class="ckt-hero">
@@ -189,7 +187,7 @@ else:
     with exp_col2:
         st.download_button(
             label="📊 Download Results (Excel)",
-            data=get_excel_download(matches[show_cols], sheet_name="Filtered_Circuits"),
+            data=get_excel_download(matches[show_cols], sheet_name="Filtered_Circuits", title="Circuit Search Results"),
             file_name=f"Circuit_SearchResults_{q}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True
@@ -213,7 +211,7 @@ with st.expander("All sites (master)", expanded=False):
     with m_col2:
         st.download_button(
             label="📊 Export Master (Excel)",
-            data=get_excel_download(master[cols], sheet_name="Master_Circuits"),
+            data=get_excel_download(master[cols], sheet_name="Master_Circuits", title="Master Circuit List"),
             file_name="Master_Circuit_List.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="master_excel_download",
