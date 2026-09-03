@@ -2,6 +2,7 @@ import streamlit as st
 from utils.auto_load import auto_load_tickets
 from utils.site_search import render_site_history_panel
 from utils.bootstrap import show_last_update
+from utils.data_processing import isp_options
 
 if "selected_isp" not in st.session_state:
     st.session_state.selected_isp = "ALL"
@@ -47,24 +48,28 @@ if site_q and (search_btn or site_q):
     render_site_history_panel(site_q.strip().upper())
     st.markdown("---")
 
-st.markdown("### ISP Filter (optional)")
-st.caption("Default = ALL. Specific partner chahiye to select karo.")
-col1, col2, col3 = st.columns(3)
-with col1:
-    if st.button("🏢 HCIN", use_container_width=True,
-                 type="primary" if st.session_state.selected_isp == "HCIN" else "secondary"):
-        st.session_state.selected_isp = "HCIN"
-        st.rerun()
-with col2:
-    if st.button("🌐 ONEOTT", use_container_width=True,
-                 type="primary" if st.session_state.selected_isp == "ONEOTT" else "secondary"):
-        st.session_state.selected_isp = "ONEOTT"
-        st.rerun()
-with col3:
-    if st.button("📊 ALL", use_container_width=True,
-                 type="primary" if st.session_state.selected_isp == "ALL" else "secondary"):
-        st.session_state.selected_isp = "ALL"
-        st.rerun()
+st.markdown("### ISP Filter")
+st.caption("Owner column ke saare ISP. Naya ISP sheet mein aaya to yahan auto dikhega.")
+opts = isp_options(
+    st.session_state.get("closed_df"),
+    st.session_state.get("open_df"),
+    st.session_state.get("raw_tickets_df"),
+)
+if not opts:
+    opts = ["ALL"]
+if st.session_state.selected_isp not in opts:
+    st.session_state.selected_isp = "ALL"
+pick = st.radio(
+    "ISP",
+    opts,
+    horizontal=True,
+    index=opts.index(st.session_state.selected_isp),
+    label_visibility="collapsed",
+    key="home_isp_radio",
+)
+if pick != st.session_state.selected_isp:
+    st.session_state.selected_isp = pick
+    st.rerun()
 
 st.success(f"**Active:** {st.session_state.selected_isp}  |  Data loaded automatically")
 
@@ -85,6 +90,10 @@ if st.session_state.closed_df is not None or st.session_state.open_df is not Non
     c1.metric("Closed", closed_count)
     c2.metric("Open", open_count)
     c3.metric("ISP", st.session_state.selected_isp)
+    closed = st.session_state.get("closed_df")
+    if closed is not None and not closed.empty and "isp" in closed.columns:
+        vc = closed["isp"].value_counts()
+        st.caption("Tickets by ISP: " + " • ".join(f"{k}={int(v)}" for k, v in vc.items()))
 
 st.markdown("---")
 st.caption("Sidebar categories: Tickets • SIM & Data • Reports • Tools")
