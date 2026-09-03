@@ -99,37 +99,42 @@ def _site_index(values, col=1):
     return idx
 
 
-def _digit_key(part):
-    d = "".join(ch for ch in str(part or "") if ch.isdigit())
-    if len(d) >= 10:
-        return d[-10:]
-    return d if len(d) >= 8 else ""
+def phone_keys(text):
+    """Unique 10-digit keys from a contact cell. No duplicates."""
+    keys = []
+    raw = str(text or "")
+    for part in re.split(r"[,/;|\n]+", raw):
+        d = "".join(ch for ch in part if ch.isdigit())
+        if not d:
+            continue
+        if d.startswith("91") and len(d) >= 12:
+            d = d[-10:]
+        elif d.startswith("0") and len(d) >= 11:
+            d = d[-10:]
+        elif len(d) >= 10:
+            d = d[-10:]
+        elif len(d) < 8:
+            continue
+        if d not in keys:
+            keys.append(d)
+    return keys
+
+
+def unique_contact(text):
+    return ", ".join(phone_keys(text))
 
 
 def merge_contact(old, new):
-    """Keep old number, append only new ones as: old, new"""
-    old = str(old or "").strip()
-    new = str(new or "").strip()
-    if not old:
-        return new, new
-    if not new:
-        return old, ""
-    have = set()
-    for part in re.split(r"[/,;|\n]", old):
-        k = _digit_key(part)
-        if k:
-            have.add(k)
-    extra = []
-    for part in re.split(r"[/,;|\n]", new):
-        part = part.strip()
-        k = _digit_key(part)
-        if k and k not in have:
-            extra.append(part)
-            have.add(k)
-    if not extra:
-        return old, ""
-    added = ", ".join(extra)
-    return old + ", " + added, added
+    """Live = unique old+new. added = only numbers not already in old.
+    First fill (no old) does NOT copy into New LC column."""
+    old_keys = phone_keys(old)
+    new_keys = phone_keys(new)
+    have = set(old_keys)
+    extra = [k for k in new_keys if k not in have]
+    live = ", ".join(old_keys + extra)
+    if not old_keys:
+        return live, ""
+    return live, ", ".join(extra)
 
 
 def _ensure_cols_batch(ws, values, extra, min_cols):
@@ -221,36 +226,50 @@ def update_lc_excel_batch(items, source="auto"):
         phone = str(it.get("phone") or "").strip()
         handled = str(it.get("handled_by") or "").strip()
         src_label = str(it.get("source") or source)
-        if not site or not phone:
+        if not site or not phone_keys(phone):
             continue
         prev_name = prev_phone = ""
+        prev_new_phone = ""
         if site in tmap:
             row = _pad(tvals[tmap[site]], 24)
             prev_name, prev_phone = row[11], row[12]
+            prev_new_phone = row[14] if len(row) > 14 else ""
         if site in smap:
             row = _pad(svals[smap[site]], 11)
             prev_name = row[2] or prev_name
             prev_phone = row[3] or prev_phone
+            if len(row) > 6:
+                prev_new_phone = row[6] or prev_new_phone
 
         live_phone, added = merge_contact(prev_phone, phone)
-        if not added and prev_phone:
+        live_unique = unique_contact(live_phone)
+        prev_unique = unique_contact(prev_phone)
+        already_in_new = set(phone_keys(prev_new_phone))
+        extra_keys = [k for k in phone_keys(added) if k not in already_in_new]
+        added = ", ".join(extra_keys)
+
+        if prev_unique and live_unique == prev_unique and not added:
             continue
+        if not live_unique:
+            continue
+
         live_name = prev_name or name
-        new_phone = added or phone
+        new_name = name if added else ""
+        new_phone = added
 
         if site in tmap:
             r = tmap[site]
             t_updates.append({
                 "range": f"L{r+1}:S{r+1}",
-                "values": [[live_name, live_phone, name, new_phone, prev_name, prev_phone, ts, src_label]],
+                "values": [[live_name, live_unique, new_name, new_phone, prev_name, prev_unique, ts, src_label]],
             })
         else:
             nrow = [""] * 24
             nrow[0] = len(tvals) + len(t_appends)
             nrow[1] = site
             nrow[11] = live_name
-            nrow[12] = live_phone
-            nrow[13] = name
+            nrow[12] = live_unique
+            nrow[13] = new_name
             nrow[14] = new_phone
             nrow[17] = ts
             nrow[18] = src_label
@@ -260,14 +279,14 @@ def update_lc_excel_batch(items, source="auto"):
             row = _pad(svals[r], 11)
             s_updates.append({
                 "range": f"C{r+1}:K{r+1}",
-                "values": [[live_name, live_phone, handled or row[4], name, new_phone, prev_name, prev_phone, ts, src_label]],
+                "values": [[live_name, live_unique, handled or row[4], new_name, new_phone, prev_name, prev_unique, ts, src_label]],
             })
         else:
             s_appends.append([
-                len(svals) + len(s_appends), site, live_name, live_phone, handled,
-                name, new_phone, prev_name, prev_phone, ts, src_label,
+                len(svals) + len(s_appends), site, live_name, live_unique, handled,
+                new_name, new_phone, prev_name, prev_unique, ts, src_label,
             ])
-        logs.append([ts, site, prev_name, prev_phone, name, new_phone, src_label])
+        logs.append([ts, site, prev_name, prev_unique, new_name, new_phone or live_unique, src_label])
 
     def _chunk(seq, n=40):
         for i in range(0, len(seq), n):
