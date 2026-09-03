@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 from io import BytesIO
 
@@ -9,8 +8,11 @@ import streamlit as st
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import show_last_update
 from utils.google_sheets import load_sheet_as_csv
-from utils.firebase_store import firebase_ready, upsert, get_one, list_all
-from utils.sheet_write import update_lc_excel, update_lc_excel_batch, sa_email, test_sheet_write
+from utils.firebase_store import firebase_ready, upsert
+from utils.sheet_write import (
+    update_lc_excel, update_lc_excel_batch, test_sheet_write,
+    phone_keys, unique_contact,
+)
 
 XTRANET = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
 MAIL_ID = "1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I"
@@ -23,8 +25,7 @@ show_last_update()
 
 st.title("LC Master")
 st.caption(
-    "Poori sheet padhke: LC tab (401145054) → pending-mail dono contact columns match. "
-    "Number pehle se hai to skip, naya hai to automatic update. Manual bhi hai."
+    "Same number 2 baar nahi. Pehla number live column. Naya number hi next column (New LC Contact)."
 )
 
 if st.button("Test Google Sheet write"):
@@ -52,24 +53,17 @@ def _col(df, *names):
 
 
 def last10s(text):
-    out = set()
-    for part in re.split(r"[/,;|\n]", str(text or "")):
-        d = "".join(ch for ch in part if ch.isdigit())
-        if len(d) >= 10:
-            out.add(d[-10:])
-        elif len(d) >= 8:
-            out.add(d)
-    return out
+    return set(phone_keys(text))
 
 
 def join_phones(*texts):
     seen, parts = set(), []
     for t in texts:
-        for p in last10s(t):
+        for p in phone_keys(t):
             if p not in seen:
                 seen.add(p)
                 parts.append(p)
-    return " / ".join(parts), seen
+    return ", ".join(parts), seen
 
 
 def clean(v):
@@ -157,12 +151,14 @@ def load_target():
 
 def apply_rows(rows, name_col, phone_col, src_label):
     items = []
+    seen_sites = set()
     for _, r in rows.iterrows():
         site = clean(r["site_code"])
         name = clean(r.get(name_col)) or clean(r.get("lc_name"))
-        phone = clean(r.get(phone_col))
-        if not site or not phone:
+        phone = unique_contact(clean(r.get(phone_col)))
+        if not site or not phone or site in seen_sites:
             continue
+        seen_sites.add(site)
         items.append({
             "site": site,
             "name": name,
@@ -170,7 +166,7 @@ def apply_rows(rows, name_col, phone_col, src_label):
             "handled_by": clean(r.get("handled_by")),
             "source": src_label,
             "old_name": clean(r.get("lc_name")),
-            "old_phone": clean(r.get("lc_phone")),
+            "old_phone": unique_contact(clean(r.get("lc_phone"))),
         })
     if not items:
         return 0, []
@@ -189,7 +185,7 @@ def apply_rows(rows, name_col, phone_col, src_label):
                     })
                 except Exception:
                     pass
-        return int(res.get("ok") or len(items)), []
+        return int(res.get("ok") or 0), []
     except Exception as e:
         return 0, [f"{type(e).__name__}: {e}"]
 
@@ -220,7 +216,7 @@ exist_map = {}
 for _, r in old.iterrows():
     exist_map[r["site_code"]] = {
         "name": clean(r["lc_name"]),
-        "phone": clean(r["lc_phone"]),
+        "phone": unique_contact(r["lc_phone"]),
         "handled_by": clean(r.get("handled_by")),
         "digits": last10s(r["lc_phone"]),
     }
@@ -233,7 +229,7 @@ if not target.empty and "site_code" in target.columns:
         extra = last10s(r.get("tgt_phone", ""))
         d["digits"] |= extra
         if not d["phone"] and clean(r.get("tgt_phone")):
-            d["phone"] = clean(r.get("tgt_phone"))
+            d["phone"] = unique_contact(r.get("tgt_phone"))
             d["name"] = d["name"] or clean(r.get("tgt_name"))
 
 mail_s = mail.copy() if not mail.empty else pd.DataFrame(columns=["site_code", "mail_name", "mail_phone"])
@@ -245,16 +241,17 @@ for site in sorted(all_sites):
     ex = exist_map.get(site, {"name": "", "phone": "", "handled_by": "", "digits": set()})
     mhit = mail_s[mail_s["site_code"] == site] if not mail_s.empty else mail_s
     mail_name = clean(mhit.iloc[0]["mail_name"]) if len(mhit) else ""
-    mail_phone = clean(mhit.iloc[0]["mail_phone"]) if len(mhit) else ""
+    mail_phone = unique_contact(mhit.iloc[0]["mail_phone"]) if len(mhit) else ""
     mail_d = last10s(mail_phone)
     old_d = ex["digits"]
+    extra = mail_d - old_d
     if not mail_d and not old_d:
         status = "NO CONTACT"
     elif not mail_d:
         status = "LC ONLY (mail empty)"
     elif not old_d:
-        status = "NEW (LC empty)"
-    elif mail_d <= old_d:
+        status = "FIRST FILL (live only)"
+    elif not extra:
         status = "SAME — skip"
     else:
         status = "NEW NUMBER"
@@ -266,6 +263,7 @@ for site in sorted(all_sites):
         "mail_name": mail_name,
         "mail_phone": mail_phone,
         "status": status,
+        "extra_phone": ", ".join(sorted(extra)) if extra else "",
     })
 merged = pd.DataFrame(rows)
 
@@ -287,16 +285,18 @@ if not target.empty:
                 "handled_by": ex.get("handled_by", ""),
             })
 fill_df = pd.DataFrame(need_fill).drop_duplicates("site_code") if need_fill else pd.DataFrame()
-new_only = merged[merged["status"].str.startswith("NEW")].copy()
+new_only = merged[merged["status"] == "NEW NUMBER"].copy()
+first_fill = merged[merged["status"].str.startswith("FIRST FILL")].copy()
 
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("LC tab sites", len(old))
 k2.metric("Pending-mail sites", len(mail))
-k3.metric("New number → update", len(new_only))
+k3.metric("New number → next col", len(new_only))
 k4.metric("Already hai → skip", int((merged["status"] == "SAME — skip").sum()))
 
 sig = (
     tuple(sorted(new_only["site_code"].tolist())),
+    tuple(sorted(first_fill["site_code"].tolist()) if not first_fill.empty else ()),
     tuple(sorted(fill_df["site_code"].tolist()) if not fill_df.empty else ()),
 )
 if st.session_state.get("lc_auto_sig") != sig:
@@ -304,23 +304,28 @@ if st.session_state.get("lc_auto_sig") != sig:
         ok_f, fail_f = (0, [])
         if not fill_df.empty:
             ok_f, fail_f = apply_rows(fill_df, "mail_name", "mail_phone", "lc_tab_fill")
+        ok_1, fail_1 = (0, [])
+        if not first_fill.empty:
+            ok_1, fail_1 = apply_rows(first_fill, "mail_name", "mail_phone", "pending_mail_first")
         ok_n, fail_n = (0, [])
         if not new_only.empty:
             ok_n, fail_n = apply_rows(new_only, "mail_name", "mail_phone", "pending_mail_auto")
     st.session_state["lc_auto_sig"] = sig
     if ok_f:
-        st.success(f"LC tab se {ok_f} sites fill.")
+        st.success(f"LC tab se {ok_f} sites live column fill (New LC empty).")
+    if ok_1:
+        st.success(f"Pehla number {ok_1} sites — live column only.")
     if ok_n:
-        st.success(f"Pending mail se {ok_n} NEW numbers update.")
-    fails = fail_f + fail_n
+        st.success(f"Naya number {ok_n} sites — live + New LC Contact.")
+    fails = fail_f + fail_1 + fail_n
     if fails:
         st.error(fails[0])
-    if ok_f or ok_n:
+    if ok_f or ok_1 or ok_n:
         load_old_lc.clear()
         load_target.clear()
 
-st.subheader("Pending mail vs LC (dono contact columns)")
-show_cols = [c for c in ["site_code", "lc_name", "lc_phone", "mail_name", "mail_phone", "status"] if c in merged.columns]
+st.subheader("Pending mail vs LC")
+show_cols = [c for c in ["site_code", "lc_name", "lc_phone", "mail_name", "mail_phone", "extra_phone", "status"] if c in merged.columns]
 st.dataframe(merged[show_cols].sort_values("status"), use_container_width=True, height=320)
 
 st.markdown("---")
@@ -329,19 +334,20 @@ q = st.text_input("Site code", placeholder="XTNFAT357").strip().upper()
 if q:
     hit = merged[merged["site_code"] == q]
     old_name = clean(hit.iloc[0]["lc_name"]) if len(hit) else ""
-    old_ph = clean(hit.iloc[0]["lc_phone"]) if len(hit) else ""
+    old_ph = unique_contact(hit.iloc[0]["lc_phone"]) if len(hit) else ""
     mail_name = clean(hit.iloc[0]["mail_name"]) if len(hit) else ""
-    mail_ph = clean(hit.iloc[0]["mail_phone"]) if len(hit) else ""
+    mail_ph = unique_contact(hit.iloc[0]["mail_phone"]) if len(hit) else ""
+    extra = ", ".join(k for k in phone_keys(mail_ph) if k not in last10s(old_ph))
     st.write(f"**LC tab:** {old_name} / {old_ph}")
-    st.write(f"**Pending mail (dono columns merge):** {mail_name} / {mail_ph}")
-    if mail_ph and last10s(mail_ph) and last10s(mail_ph) <= last10s(old_ph):
-        st.info("Yahi number pehle se LC mein hai — auto skip.")
-        default_name, default_ph = old_name, old_ph
-    elif mail_ph:
-        st.warning("Mail pe extra/naya number hai.")
+    st.write(f"**Pending mail (unique):** {mail_name} / {mail_ph}")
+    if extra:
+        st.warning(f"Naya number (next column): {extra}")
         default_name, default_ph = mail_name or old_name, mail_ph or old_ph
-    else:
+    elif mail_ph and last10s(mail_ph) <= last10s(old_ph):
+        st.info("Yahi number pehle se LC mein hai — skip. Duplicate nahi likhega.")
         default_name, default_ph = old_name, old_ph
+    else:
+        default_name, default_ph = mail_name or old_name, mail_ph or old_ph
     n1, n2 = st.columns(2)
     with n1:
         new_name = st.text_input("LC name", value=default_name)
@@ -349,22 +355,23 @@ if q:
         new_ph = st.text_input("LC contact number", value=default_ph)
     note = st.text_input("Note", value="")
     if st.button("Save manual (Excel + Firebase)"):
-        if not new_name and not new_ph:
+        new_ph_u = unique_contact(new_ph)
+        if not new_name and not new_ph_u:
             st.warning("Name ya number dalo.")
-        elif last10s(new_ph) and last10s(new_ph) <= last10s(old_ph) and clean(new_name) == clean(old_name):
-            st.info("Same details — skip.")
+        elif last10s(new_ph_u) and last10s(new_ph_u) <= last10s(old_ph) and clean(new_name) == clean(old_name):
+            st.info("Same details — skip. Duplicate write nahi.")
         else:
             if firebase_ready():
                 try:
                     upsert("site_lc", q, {
-                        "site_code": q, "lc_name": new_name.strip(), "lc_number": new_ph.strip(),
+                        "site_code": q, "lc_name": new_name.strip(), "lc_number": new_ph_u,
                         "old_lc_name": old_name, "old_lc_number": old_ph, "note": note.strip(), "source": "manual",
                     })
                     st.success("Firebase save.")
                 except Exception as e:
                     st.error(f"Firebase: {e}")
             try:
-                how = update_lc_excel(q, new_name.strip(), new_ph.strip(), source="manual")
+                how = update_lc_excel(q, new_name.strip(), new_ph_u, source="manual")
                 st.success(f"Excel update: {how}")
             except Exception as e:
                 st.error(f"{type(e).__name__}: {e}")
