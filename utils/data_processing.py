@@ -42,7 +42,6 @@ def detect_category(reason_text):
             return 'Others'
         text = _norm_remark(reason_text)
 
-        # Vendor Change — exact close remark
         if (
             'alternate service provider' in text
             or 'provisioned on alternate' in text
@@ -102,6 +101,51 @@ def safe_series(df, col):
         return data
     except Exception:
         return pd.Series(dtype=object)
+
+def classify_isp(x):
+    """Owner column → ISP. HCIN / ONEOTT aliases; any other owner name is also an ISP."""
+    try:
+        s = str(x or '').strip()
+        if not s or s.lower() in ('nan', 'none', '-', '--', 'nat', 'null', ''):
+            return 'UNKNOWN'
+        u = s.upper()
+        if 'HCIN' in u or 'HICOM' in u:
+            return 'HCIN'
+        if 'ONEOTT' in u or 'ONE OTT' in u or 'CELERITY' in u:
+            return 'ONEOTT'
+        if re.search(r'(^|[^A-Z0-9])OTT([^A-Z0-9]|$)', u):
+            return 'ONEOTT'
+        name = re.split(r'\s*[-–|]\s*', s, maxsplit=1)[0].strip()
+        name = re.sub(r'(?i)\s*(fe\s*)?rollout\s*partner.*', '', name).strip()
+        return name if name else s
+    except Exception:
+        return 'UNKNOWN'
+
+def isp_options(*frames, add_all=True):
+    """Unique ISP names from loaded tickets (Owner). New ISP auto-appears."""
+    names = []
+    seen = set()
+    for df in frames:
+        if df is None or getattr(df, 'empty', True):
+            continue
+        series = None
+        if 'isp' in df.columns:
+            series = df['isp']
+        elif 'owner' in df.columns:
+            series = df['owner'].map(classify_isp)
+        if series is None:
+            continue
+        for v in series.dropna().astype(str).unique():
+            v = str(v).strip()
+            if not v or v.upper() in ('UNKNOWN', 'NAN', 'NONE', 'OTHER', 'NAT'):
+                continue
+            if v not in seen:
+                seen.add(v)
+                names.append(v)
+    head = [x for x in ('HCIN', 'ONEOTT') if x in seen]
+    rest = sorted(x for x in names if x not in head)
+    opts = head + rest
+    return (['ALL'] + opts) if add_all else opts
 
 def process_closed_tickets(df):
     if df is None or df.empty:
@@ -164,20 +208,10 @@ def process_closed_tickets(df):
         df['resolution_days'] = np.nan
 
     if 'owner' in df.columns:
-        def get_isp(x):
-            try:
-                s = str(x).upper()
-                if 'HCIN' in s:
-                    return 'HCIN'
-                if 'ONEOTT' in s or 'OTT' in s:
-                    return 'ONEOTT'
-                return 'OTHER'
-            except:
-                return 'OTHER'
         try:
-            df['isp'] = safe_series(df, 'owner').apply(get_isp)
+            df['isp'] = safe_series(df, 'owner').apply(classify_isp)
         except Exception:
-            df['isp'] = 'OTHER'
+            df['isp'] = 'UNKNOWN'
 
     if 'reason' in df.columns:
         remark_cat = safe_series(df, 'reason').apply(detect_category)
@@ -255,20 +289,10 @@ def process_open_tickets(df):
             df[col] = parse_datetime(safe_series(df, col))
 
     if 'owner' in df.columns:
-        def get_isp(x):
-            try:
-                s = str(x).upper()
-                if 'HCIN' in s:
-                    return 'HCIN'
-                if 'ONEOTT' in s or 'OTT' in s:
-                    return 'ONEOTT'
-                return 'OTHER'
-            except:
-                return 'OTHER'
         try:
-            df['isp'] = safe_series(df, 'owner').apply(get_isp)
+            df['isp'] = safe_series(df, 'owner').apply(classify_isp)
         except Exception:
-            df['isp'] = 'OTHER'
+            df['isp'] = 'UNKNOWN'
 
     if 'submitted_time' in df.columns:
         try:
@@ -309,6 +333,11 @@ def process_site_master(df):
             df['site_code'] = safe_series(df, 'site_code').astype(str).str.strip().str.upper()
         except Exception:
             df['site_code'] = safe_series(df, 'site_code').astype(str)
+    if 'isp_name' in df.columns:
+        try:
+            df['isp'] = safe_series(df, 'isp_name').apply(classify_isp)
+        except Exception:
+            pass
     return df
 
 def merge_with_site_master(tickets_df, site_df):
