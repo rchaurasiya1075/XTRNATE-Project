@@ -25,8 +25,17 @@ show_last_update()
 
 st.title("LC Master")
 st.caption(
-    "Same number 2 baar nahi. Pehla number live column. Naya number hi next column (New LC Contact)."
+    "Site code search → LC details. Same number 2 baar nahi. Naya number hi next column."
 )
+
+st.markdown("""
+<style>
+.lc-search input { font-size: 1.15rem !important; }
+.lc-card { background:#0f172a;border:1px solid #38bdf8;border-radius:16px;padding:1.1rem 1.3rem;margin:0.6rem 0 1rem 0; }
+.lc-k { color:#94a3b8;font-size:0.75rem;letter-spacing:.05em;text-transform:uppercase;margin-bottom:2px; }
+.lc-v { color:#f8fafc;font-size:1.05rem;font-weight:700; }
+</style>
+""", unsafe_allow_html=True)
 
 if st.button("Test Google Sheet write"):
     res = test_sheet_write()
@@ -73,6 +82,12 @@ def clean(v):
     return "" if s.lower() in ("nan", "none") else s
 
 
+def map_col(df, dest, *names):
+    c = _col(df, *names)
+    df[dest] = df[c].map(clean) if c else ""
+    return df
+
+
 @st.cache_data(ttl=120, show_spinner=False)
 def load_old_lc():
     df = load_sheet_as_csv(XTRANET, gid=LC_GID)
@@ -83,6 +98,8 @@ def load_old_lc():
     df["lc_phone"] = df[_col(df, "contact number") or df.columns[3]].map(clean)
     hb = _col(df, "hndled by", "handled by")
     df["handled_by"] = df[hb].map(clean) if hb else ""
+    df = map_col(df, "new_lc_name", "new lc name")
+    df = map_col(df, "new_lc_phone", "new lc contact")
     df = df[df["site_code"].str.len() > 3]
     return df.drop_duplicates("site_code", keep="last")
 
@@ -146,6 +163,13 @@ def load_target():
     ph = _col(df, "branch person contact number", "contact number")
     df["tgt_name"] = df[nm].map(clean) if nm else ""
     df["tgt_phone"] = df[ph].map(clean) if ph else ""
+    df = map_col(df, "bank", "bank name")
+    df = map_col(df, "branch", "branch name")
+    df = map_col(df, "state", "state")
+    df = map_col(df, "isp", "isp name", "isp")
+    df = map_col(df, "ckt_id", "ckt id")
+    df = map_col(df, "tgt_new_name", "new lc name")
+    df = map_col(df, "tgt_new_phone", "new lc contact")
     return df
 
 
@@ -218,6 +242,8 @@ for _, r in old.iterrows():
         "name": clean(r["lc_name"]),
         "phone": unique_contact(r["lc_phone"]),
         "handled_by": clean(r.get("handled_by")),
+        "new_lc_name": clean(r.get("new_lc_name", "")),
+        "new_lc_phone": unique_contact(r.get("new_lc_phone", "")),
         "digits": last10s(r["lc_phone"]),
     }
 if not target.empty and "site_code" in target.columns:
@@ -225,12 +251,23 @@ if not target.empty and "site_code" in target.columns:
         site = clean(r["site_code"])
         if not site:
             continue
-        d = exist_map.setdefault(site, {"name": "", "phone": "", "handled_by": "", "digits": set()})
+        d = exist_map.setdefault(site, {
+            "name": "", "phone": "", "handled_by": "",
+            "new_lc_name": "", "new_lc_phone": "", "digits": set(),
+        })
         extra = last10s(r.get("tgt_phone", ""))
         d["digits"] |= extra
         if not d["phone"] and clean(r.get("tgt_phone")):
             d["phone"] = unique_contact(r.get("tgt_phone"))
             d["name"] = d["name"] or clean(r.get("tgt_name"))
+        d["bank"] = clean(r.get("bank"))
+        d["branch"] = clean(r.get("branch"))
+        d["state"] = clean(r.get("state"))
+        d["isp"] = clean(r.get("isp"))
+        d["ckt_id"] = clean(r.get("ckt_id"))
+        if clean(r.get("tgt_new_phone")):
+            d["new_lc_phone"] = unique_contact(r.get("tgt_new_phone"))
+            d["new_lc_name"] = d.get("new_lc_name") or clean(r.get("tgt_new_name"))
 
 mail_s = mail.copy() if not mail.empty else pd.DataFrame(columns=["site_code", "mail_name", "mail_phone"])
 rows = []
@@ -238,7 +275,10 @@ all_sites = set(exist_map.keys())
 if not mail_s.empty:
     all_sites |= set(mail_s["site_code"].tolist())
 for site in sorted(all_sites):
-    ex = exist_map.get(site, {"name": "", "phone": "", "handled_by": "", "digits": set()})
+    ex = exist_map.get(site, {
+        "name": "", "phone": "", "handled_by": "",
+        "new_lc_name": "", "new_lc_phone": "", "digits": set(),
+    })
     mhit = mail_s[mail_s["site_code"] == site] if not mail_s.empty else mail_s
     mail_name = clean(mhit.iloc[0]["mail_name"]) if len(mhit) else ""
     mail_phone = unique_contact(mhit.iloc[0]["mail_phone"]) if len(mhit) else ""
@@ -257,15 +297,76 @@ for site in sorted(all_sites):
         status = "NEW NUMBER"
     rows.append({
         "site_code": site,
-        "lc_name": ex["name"],
-        "lc_phone": ex["phone"],
+        "lc_name": ex.get("name", ""),
+        "lc_phone": ex.get("phone", ""),
         "handled_by": ex.get("handled_by", ""),
+        "new_lc_name": ex.get("new_lc_name", ""),
+        "new_lc_phone": ex.get("new_lc_phone", ""),
+        "bank": ex.get("bank", ""),
+        "branch": ex.get("branch", ""),
+        "state": ex.get("state", ""),
+        "isp": ex.get("isp", ""),
+        "ckt_id": ex.get("ckt_id", ""),
         "mail_name": mail_name,
         "mail_phone": mail_phone,
         "status": status,
         "extra_phone": ", ".join(sorted(extra)) if extra else "",
     })
 merged = pd.DataFrame(rows)
+
+st.markdown("---")
+st.subheader("🔍 Site code search — LC details")
+sq = st.text_input(
+    "Site code likho",
+    placeholder="XTNFAT357",
+    key="lc_lookup_box",
+    label_visibility="collapsed",
+).strip().upper()
+
+if sq:
+    hits = merged[merged["site_code"].astype(str).str.contains(sq, na=False)].copy()
+    exact = hits[hits["site_code"] == sq]
+    rest = hits[hits["site_code"] != sq]
+    hits = pd.concat([exact, rest], ignore_index=True)
+    if hits.empty:
+        st.warning(f"`{sq}` ka LC data nahi mila.")
+    else:
+        for i, row in hits.head(12).iterrows():
+            site = clean(row.get("site_code"))
+            lc_name = clean(row.get("lc_name")) or "—"
+            lc_phone = unique_contact(row.get("lc_phone")) or "—"
+            new_ph = unique_contact(row.get("new_lc_phone") or row.get("extra_phone")) or "—"
+            with st.container(border=True):
+                st.markdown(f"#### {site}")
+                a, b, c = st.columns(3)
+                a.metric("LC Name", lc_name)
+                b.metric("LC Number", lc_phone)
+                c.metric("New LC Number", new_ph)
+                d1, d2 = st.columns(2)
+                with d1:
+                    st.caption("Site code — copy")
+                    st.code(site, language=None)
+                    st.markdown(f"**Handled by:** {clean(row.get('handled_by')) or '—'}")
+                    st.markdown(f"**Bank:** {clean(row.get('bank')) or '—'}")
+                    st.markdown(f"**Branch:** {clean(row.get('branch')) or '—'}")
+                with d2:
+                    st.caption("LC number — copy")
+                    st.code(lc_phone, language=None)
+                    st.markdown(f"**State:** {clean(row.get('state')) or '—'}")
+                    st.markdown(f"**ISP:** {clean(row.get('isp')) or '—'}")
+                    st.markdown(f"**Ckt ID:** {clean(row.get('ckt_id')) or '—'}")
+                st.markdown(
+                    f"**Pending mail:** {clean(row.get('mail_name')) or '—'} / "
+                    f"{unique_contact(row.get('mail_phone')) or '—'}"
+                )
+                st.caption(f"Status: {clean(row.get('status'))}")
+        show = [c for c in [
+            "site_code", "lc_name", "lc_phone", "new_lc_phone", "handled_by",
+            "mail_name", "mail_phone", "extra_phone", "bank", "branch", "state", "isp", "ckt_id", "status",
+        ] if c in hits.columns]
+        st.dataframe(hits[show], use_container_width=True, hide_index=True)
+else:
+    st.info("Upar box mein site code likho — LC name, number, mail, bank/branch turant dikhega.")
 
 need_fill = []
 if not target.empty:
@@ -330,7 +431,7 @@ st.dataframe(merged[show_cols].sort_values("status"), use_container_width=True, 
 
 st.markdown("---")
 st.subheader("Manual LC update (site code)")
-q = st.text_input("Site code", placeholder="XTNFAT357").strip().upper()
+q = st.text_input("Site code", placeholder="XTNFAT357", key="lc_manual_site").strip().upper()
 if q:
     hit = merged[merged["site_code"] == q]
     old_name = clean(hit.iloc[0]["lc_name"]) if len(hit) else ""
