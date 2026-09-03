@@ -61,7 +61,7 @@ def last_ticket_time():
 def show_last_update():
     ts, tid, site = last_ticket_raise()
     if ts is None:
-        msg = "Last TT raise: data not loaded"
+        msg = "Last update (Last TT raise): data not loaded"
     else:
         now = datetime.now(IST)
         if getattr(ts, "tzinfo", None) is None:
@@ -83,7 +83,7 @@ def show_last_update():
         if site and site.lower() not in ("nan", "none"):
             extra.append(site)
         tail = (" • " + " • ".join(extra)) if extra else ""
-        msg = f"Last TT raise: {stamp}{tail}  ({ago})"
+        msg = f"Last update = Last TT raise: {stamp}{tail}  ({ago})"
 
     st.markdown(
         f"""
@@ -97,7 +97,7 @@ def show_last_update():
         unsafe_allow_html=True,
     )
     with st.sidebar:
-        st.markdown("**⏱️ Last TT raise**")
+        st.markdown("**⏱️ Last update (Last TT raise)**")
         st.caption(msg)
 
 

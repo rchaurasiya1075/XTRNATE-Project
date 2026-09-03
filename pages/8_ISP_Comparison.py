@@ -8,14 +8,14 @@ from io import BytesIO
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, show_last_update
-from utils.data_processing import detect_category, get_summary_stats
+from utils.data_processing import detect_category, get_summary_stats, isp_options, classify_isp
 from utils.isp_deck import build_isp_pptx
 
 st.set_page_config(page_title="ISP Comparison | XTRNATE", page_icon="⚖️", layout="wide")
 show_last_update()
 
-st.title("⚖️ ISP Report — HCIN / ONEOTT")
-st.caption("Date range • HCIN ya OTT • Last remark se category • Repeat 3M/6M • Excel + PPT")
+st.title("⚖️ ISP Report")
+st.caption("Date range • Owner ke saare ISP • Last remark se category • Repeat 3M/6M • Excel + PPT")
 ensure_ready()
 
 
@@ -87,7 +87,10 @@ work["outage_class"] = work["outage_class"].replace({
     "Feasibility": "Vendor Change",
 })
 
-partner = st.radio("ISP (sirf selected ka report)", ["HCIN", "ONEOTT"], horizontal=True)
+opts = isp_options(work, open_df)
+if not opts:
+    opts = ["ALL"]
+partner = st.radio("ISP (Owner ke saare ISP)", opts, horizontal=True)
 
 min_d = work["submitted_time"].min() if "submitted_time" in work.columns else pd.NaT
 max_d = work["submitted_time"].max() if "submitted_time" in work.columns else pd.NaT
@@ -123,14 +126,14 @@ period = work[work[time_col].notna() & (work[time_col] >= start_ts) & (work[time
 def filter_isp(df):
     if df is None or df.empty:
         return pd.DataFrame()
+    if partner == "ALL":
+        return df.copy()
     if "isp" in df.columns:
         out = df[df["isp"] == partner].copy()
         if not out.empty:
             return out
     if "owner" in df.columns:
-        own = df["owner"].astype(str).str.upper()
-        key = "HCIN|HICOM" if partner == "HCIN" else "ONEOTT|OTT|CELERITY"
-        return df[own.str.contains(key, na=False)].copy()
+        return df[df["owner"].map(classify_isp) == partner].copy()
     return df.copy()
 
 view = filter_isp(period)

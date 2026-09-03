@@ -7,8 +7,11 @@ import io
 # Project root add kar rahe hain taaki utils module read ho sake
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
+from utils.data_processing import classify_isp
+from utils.bootstrap import show_last_update
 
 st.set_page_config(page_title="Circuit ID | XTRNATE", page_icon="🔌", layout="wide")
+show_last_update()
 
 CKT_URL = "https://docs.google.com/spreadsheets/d/1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I/edit?usp=sharing"
 CKT_GID = 886642043
@@ -65,15 +68,11 @@ def load_ckt_master():
     return df
 
 def isp_display(val):
-    s = str(val or '').strip()
-    u = s.upper()
-    if 'HCIN' in u:
-        return 'HCIN'
-    if 'ONEOTT' in u or 'OTT' in u:
-        return 'ONEOTT'
-    if 'CELERITY' in u:
-        return 'ONEOTT / Celerity'
-    return s if s and s.lower() not in ('nan', '--') else '—'
+    name = classify_isp(val)
+    if name == 'UNKNOWN':
+        s = str(val or '').strip()
+        return s if s and s.lower() not in ('nan', '--') else '—'
+    return name
 
 # Helper function to generate Excel binary buffer
 def get_excel_download(dataframe: pd.DataFrame, sheet_name="Circuit_Data"):

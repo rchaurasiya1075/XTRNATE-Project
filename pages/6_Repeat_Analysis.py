@@ -287,7 +287,7 @@ with tab4:
 # -------------------- TAB 5: Current Open Tickets --------------------
 with tab5:
     st.subheader("🚨 Current Open Tickets (Live)")
-    st.caption("Yeh Open tickets hain jo abhi resolve nahi hue. HCIN / ONEOTT / ALL ke hisaab se filter hota hai.")
+    st.caption("Yeh Open tickets hain jo abhi resolve nahi hue. Home page ke ISP filter (Owner ke saare names) se filter hota hai.")
 
     if open_df is None or open_df.empty:
         st.info("No open tickets loaded. Upload Open Tickets Excel from Upload Data page.")

@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, show_last_update
 from utils.google_sheets import load_sheet_as_csv
 from utils.auto_load import auto_load_tickets
+from utils.data_processing import isp_options, classify_isp
 
 SHEET_ID = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
 USAGE_GID = "710549453"
@@ -35,7 +36,7 @@ st.set_page_config(page_title="SIM Backup Usage | XTRNATE", page_icon="📶", la
 show_last_update()
 
 st.title("📶 SIM Backup Usage vs BB Down")
-st.caption("Backup SIM data • 10 GB plan • Site list: Branch + State + ISP (HCIN/OTT) sheet se")
+st.caption("Backup SIM data • 10 GB plan • Site list: Branch + State + ISP (Owner ke saare names) sheet se")
 
 ensure_ready()
 if st.session_state.get("closed_df") is None:
@@ -105,13 +106,10 @@ def clean_cell(v):
 
 
 def norm_isp(v):
-    u = str(v or "").upper()
-    if "HCIN" in u or "HICOM" in u:
-        return "HCIN"
-    if "ONEOTT" in u or "OTT" in u or "CELERITY" in u:
-        return "ONEOTT"
-    s = clean_cell(v)
-    return s
+    name = classify_isp(v)
+    if name == "UNKNOWN":
+        return clean_cell(v)
+    return name
 
 
 @st.cache_data(ttl=180)
@@ -185,12 +183,9 @@ if not tix.empty:
     else:
         tix["tix_month"] = ""
     if "isp" not in tix.columns and "owner" in tix.columns:
-        own = tix["owner"].astype(str).str.upper()
-        tix["isp"] = "OTHER"
-        tix.loc[own.str.contains("HCIN|HICOM", na=False), "isp"] = "HCIN"
-        tix.loc[own.str.contains("ONEOTT|OTT|CELERITY", na=False), "isp"] = "ONEOTT"
+        tix["isp"] = tix["owner"].map(classify_isp)
     elif "isp" not in tix.columns:
-        tix["isp"] = "OTHER"
+        tix["isp"] = "UNKNOWN"
 
     if "ticket_id" in tix.columns:
         tix = tix.drop_duplicates(subset=["ticket_id"], keep="first")
@@ -215,9 +210,9 @@ if "isp" not in merged.columns:
     merged["isp"] = ""
 merged["isp"] = merged["isp"].fillna("")
 if "isp_name" in merged.columns:
-    sheet_ok = merged["isp_name"].isin(["HCIN", "ONEOTT"])
+    sheet_ok = merged["isp_name"].astype(str).str.strip().ne("") & ~merged["isp_name"].isin(["UNKNOWN", "OTHER", ""])
     merged.loc[sheet_ok, "isp"] = merged.loc[sheet_ok, "isp_name"]
-    miss = ~merged["isp"].isin(["HCIN", "ONEOTT"])
+    miss = merged["isp"].isin(["", "UNKNOWN", "OTHER", "nan"])
     merged.loc[miss, "isp"] = merged.loc[miss, "isp_name"].replace("", pd.NA).fillna(merged.loc[miss, "isp"])
 merged["isp"] = merged["isp"].replace({"": "UNKNOWN", "OTHER": "UNKNOWN"}).fillna("UNKNOWN")
 merged["plan_pct"] = (merged["usage_gb"] / PLAN_GB * 100).round(1)
@@ -233,7 +228,10 @@ if not tix.empty and "site_code" in tix.columns:
 st.markdown("### Filters")
 f1, f2, f3, f4 = st.columns([1.2, 1.2, 1.4, 1.4])
 with f1:
-    partner = st.radio("ISP", ["ALL", "HCIN", "ONEOTT"], horizontal=True)
+    opts = isp_options(merged)
+    if not opts:
+        opts = ["ALL"]
+    partner = st.radio("ISP", opts, horizontal=True)
 with f2:
     months_avail = sorted(
         merged["month"].dropna().unique().tolist(),

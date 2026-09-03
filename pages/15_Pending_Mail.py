@@ -10,6 +10,7 @@ import streamlit as st
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import show_last_update
 from utils.google_sheets import extract_sheet_id
+from utils.data_processing import classify_isp, isp_options
 
 st.set_page_config(page_title="Pending Mail | XTRNATE", page_icon="📧", layout="wide")
 show_last_update()
@@ -46,12 +47,7 @@ def load_mail_sheet():
 
 
 def partner_of(owner):
-    s = str(owner or "").upper()
-    if "CELERITY" in s or "ONEOTT" in s or "OTT" in s:
-        return "ONEOTT"
-    if "HICOM" in s or "HCIN" in s:
-        return "HCIN"
-    return "OTHER"
+    return classify_isp(owner)
 
 
 def build_html(partner, brand, reason_tbl, loc_tbl, rows):
@@ -137,7 +133,7 @@ def build_html(partner, brand, reason_tbl, loc_tbl, rows):
 
 
 st.title("📧 Pending Call Mail")
-st.caption("Data sirf OPEN CALLS sheet se • HCIN / ONEOTT alag • purane pages same")
+st.caption("Data sirf OPEN CALLS sheet se • Owner ke saare ISP alag • purane pages same")
 
 if st.button("🔄 Reload mail sheet"):
     load_mail_sheet.clear()
@@ -156,8 +152,15 @@ if df.empty:
     st.stop()
 
 df["_partner"] = df.get("Owner", "").apply(partner_of)
-partner = st.radio("Mail for", ["ONEOTT", "HCIN"], horizontal=True)
-brand = "CELERITY" if partner == "ONEOTT" else "HICOM"
+tmp = df.copy()
+tmp["isp"] = tmp["_partner"]
+opts = isp_options(tmp, add_all=False)
+if not opts:
+    opts = [x for x in tmp["_partner"].dropna().astype(str).unique() if x not in ("UNKNOWN", "OTHER", "")]
+if not opts:
+    opts = ["ONEOTT", "HCIN"]
+partner = st.radio("Mail for", opts, horizontal=True)
+brand = {"ONEOTT": "CELERITY", "HCIN": "HICOM"}.get(partner, partner)
 work = df[df["_partner"] == partner].copy()
 
 if work.empty:

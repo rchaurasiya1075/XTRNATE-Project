@@ -9,14 +9,17 @@ import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
+from utils.data_processing import classify_isp, isp_options
+from utils.bootstrap import show_last_update
 
 st.set_page_config(
     page_title="Monthly SLA Report | XTRNATE", page_icon="📅", layout="wide"
 )
+show_last_update()
 
 st.title("📅 Monthly SLA Report")
 st.caption(
-    "Daily resolve counts by time bucket • HCIN / OTT split • Weekend & holiday logic"
+    "Daily resolve counts by time bucket • Owner ke saare ISP • Weekend & holiday logic"
 )
 
 if st.session_state.get("closed_df") is None:
@@ -68,14 +71,10 @@ df["bucket"] = df["resolution_hours"].apply(sla_bucket)
 
 
 def partner_type(row):
-    owner = str(row.get("owner", "") or "").upper()
-    isp = str(row.get("isp", "") or "").upper()
-    text = f"{owner} {isp}"
-    if "HCIN" in text:
-        return "HCIN"
-    if any(x in text for x in ["ONEOTT", "OTT", "CELERITY"]):
+    name = classify_isp(row.get("isp") or row.get("owner") or "")
+    if name == "ONEOTT":
         return "OTT"
-    return "OTHER"
+    return name
 
 
 df["partner"] = df.apply(partner_type, axis=1)
@@ -108,6 +107,11 @@ month_df = df[df["resolved_month"] == selected_month].copy()
 days_in_month = calendar.monthrange(y, m)[1]
 all_dates = [date(y, m, d) for d in range(1, days_in_month + 1)]
 
+extra_isps = [
+    x for x in isp_options(df.assign(isp=df["partner"]), add_all=False)
+    if x not in ("HCIN", "OTT", "ONEOTT")
+]
+# keep existing HCIN / OTT columns; extra Owner names get their own pair
 num_cols = [
     "< 2 HRS",
     "< 4 HRS",
@@ -122,6 +126,8 @@ num_cols = [
     "OTT (<24H)",
     "OTT (>24H)",
 ]
+for name in extra_isps:
+    num_cols.extend([f"{name} (<24H)", f"{name} (>24H)"])
 
 rows = []
 for d in all_dates:
@@ -139,7 +145,7 @@ for d in all_dates:
     hcin = day[day["partner"] == "HCIN"]
     ott = day[day["partner"] == "OTT"]
 
-    rows.append({
+    rec = {
         "DATE": date_str,
         "< 2 HRS": int(b.get("<2", 0)),
         "< 4 HRS": int(b.get("<4", 0)),
@@ -162,7 +168,12 @@ for d in all_dates:
             int((ott["resolution_hours"] >= 24).sum()) if len(ott) else 0
         ),
         "_holiday": False,
-    })
+    }
+    for name in extra_isps:
+        part = day[day["partner"] == name]
+        rec[f"{name} (<24H)"] = int((part["resolution_hours"] < 24).sum()) if len(part) else 0
+        rec[f"{name} (>24H)"] = int((part["resolution_hours"] >= 24).sum()) if len(part) else 0
+    rows.append(rec)
 
 daily = pd.DataFrame(rows)
 
@@ -217,6 +228,13 @@ with k3:
     """,
         unsafe_allow_html=True,
     )
+
+if extra_isps:
+    extra_cols = st.columns(min(len(extra_isps), 4))
+    for i, name in enumerate(extra_isps):
+        tot = totals.get(f"{name} (<24H)", 0) + totals.get(f"{name} (>24H)", 0)
+        with extra_cols[i % len(extra_cols)]:
+            st.metric(f"{name} TOTAL", tot)
 
 st.markdown("---")
 st.subheader(f"Daily Sheet — {selected_month}")
@@ -315,28 +333,14 @@ def style_sla_table(df_table):
                     + " background-color: #E0F2FE; color: #0369A1; font-weight:"
                     " 800;"
                 )
-            elif col == "HCIN (<24H)":
+            elif str(col).endswith("(<24H)"):
                 styles[i] = base + (
                     " background-color: #ECFDF5; color: #047857; font-weight:"
                     " 800;"
                     if num
                     else " background-color: #F8FAFC; color: #94A3B8;"
                 )
-            elif col == "HCIN (>24H)":
-                styles[i] = base + (
-                    " background-color: #FFF1F2; color: #BE123C; font-weight:"
-                    " 800;"
-                    if num
-                    else " background-color: #F8FAFC; color: #94A3B8;"
-                )
-            elif col == "OTT (<24H)":
-                styles[i] = base + (
-                    " background-color: #F3E8FF; color: #6B21A8; font-weight:"
-                    " 800;"
-                    if num
-                    else " background-color: #F8FAFC; color: #94A3B8;"
-                )
-            elif col == "OTT (>24H)":
+            elif str(col).endswith("(>24H)"):
                 styles[i] = base + (
                     " background-color: #FFF1F2; color: #BE123C; font-weight:"
                     " 800;"
@@ -436,14 +440,12 @@ with col2:
     fig.update_layout(template="plotly_dark", height=360)
     st.plotly_chart(fig, use_container_width=True)
 
+seg_names = ["HCIN (<24H)", "HCIN (>24H)", "OTT (<24H)", "OTT (>24H)"]
+for name in extra_isps:
+    seg_names.extend([f"{name} (<24H)", f"{name} (>24H)"])
 comp = pd.DataFrame({
-    "Segment": ["HCIN (<24H)", "HCIN (>24H)", "OTT (<24H)", "OTT (>24H)"],
-    "Count": [
-        totals["HCIN (<24H)"],
-        totals["HCIN (>24H)"],
-        totals["OTT (<24H)"],
-        totals["OTT (>24H)"],
-    ],
+    "Segment": seg_names,
+    "Count": [totals.get(s, 0) for s in seg_names],
 })
 fig = px.bar(
     comp,
@@ -452,7 +454,7 @@ fig = px.bar(
     text="Count",
     color="Count",
     color_continuous_scale="Purples",
-    title="HCIN vs OTT (<24h / >24h)",
+    title="ISP (<24h / >24h) — Owner ke saare names",
 )
 fig.update_layout(template="plotly_dark", height=360)
 st.plotly_chart(fig, use_container_width=True)
@@ -595,9 +597,7 @@ def to_excel():
             "> 24 HRS",
             "> 48 HRS",
             "> 72 HRS",
-            "HCIN (>24H)",
-            "OTT (>24H)",
-        ]
+        ] + [c for c in export.columns if str(c).endswith("(>24H)")]
 
         for row_idx, row in export.iterrows():
             excel_row = row_idx + 1
@@ -627,7 +627,7 @@ def to_excel():
 
                 if num_val == 0 and val != "HOLIDAY":
                     worksheet.write(excel_row, col_idx, num_val, zero_fmt)
-                elif col_name in green_cols or col_name == "HCIN (<24H)":
+                elif col_name in green_cols or str(col_name).endswith("(<24H)"):
                     worksheet.write(excel_row, col_idx, num_val, green_fmt)
                 elif col_name in yellow_cols:
                     worksheet.write(excel_row, col_idx, num_val, yellow_fmt)
@@ -635,8 +635,6 @@ def to_excel():
                     worksheet.write(excel_row, col_idx, num_val, red_fmt)
                 elif col_name == "TOTAL RESOLVED":
                     worksheet.write(excel_row, col_idx, num_val, blue_total_fmt)
-                elif col_name == "OTT (<24H)":
-                    worksheet.write(excel_row, col_idx, num_val, purple_fmt)
                 else:
                     worksheet.write(excel_row, col_idx, val, zero_fmt)
 
@@ -649,13 +647,14 @@ def to_excel():
             worksheet.set_column(col_idx, col_idx, max(max_len, 13))
 
         # Executive Summary KPI Sheet
+        kpi_names = ["TOTAL RESOLVED", "HCIN TOTAL", "OTT / CELERITY TOTAL"]
+        kpi_vals = [totals["TOTAL RESOLVED"], hcin_kpi, ott_kpi]
+        for name in extra_isps:
+            kpi_names.append(f"{name} TOTAL")
+            kpi_vals.append(totals.get(f"{name} (<24H)", 0) + totals.get(f"{name} (>24H)", 0))
         summary = pd.DataFrame({
-            "KPI Metric": [
-                "TOTAL RESOLVED",
-                "HCIN TOTAL",
-                "OTT / CELERITY TOTAL",
-            ],
-            "Count": [totals["TOTAL RESOLVED"], hcin_kpi, ott_kpi],
+            "KPI Metric": kpi_names,
+            "Count": kpi_vals,
         })
         summary.to_excel(writer, index=False, sheet_name="Executive Summary")
 

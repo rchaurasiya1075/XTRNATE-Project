@@ -13,7 +13,7 @@ st.markdown("Yahan se aap **Name, Email, Time Rules, Level** sab edit kar sakte 
 
 isp = st.session_state.get('selected_isp')
 if not isp or isp == "ALL":
-    st.warning("Please select a specific ISP (HCIN or ONEOTT) from the Home page. Matrix is separate for each ISP.")
+    st.warning("Please select a specific ISP from the Home page (Owner column ke saare ISP). Matrix is separate for each ISP.")
     st.stop()
 
 st.success(f"Editing Escalation Matrix for: **{isp}**")
@@ -72,5 +72,5 @@ st.markdown("""
 - Ticket kitne hours se open hai, uske hisaab se Level decide hota hai.
 - **Open Escalation** page pe automatically color + person dikhega.
 - Aap levels add/delete bhi kar sakte ho (dynamic rows).
-- HCIN aur ONEOTT ke matrices bilkul alag save hote hain.
+- Har ISP ka matrix alag save hota hai (Owner column ke names).
 """)

@@ -8,6 +8,7 @@ from io import BytesIO
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
 from utils.bootstrap import show_last_update
+from utils.data_processing import classify_isp, isp_options
 
 st.set_page_config(page_title="VPN Update | XTRNATE", page_icon="📡", layout="wide")
 show_last_update()
@@ -30,13 +31,12 @@ def is_hold(s):
 
 
 def vendor_bucket(row):
-    for col in ("isp", "owner"):
-        v = str(row.get(col, "") or "").upper()
-        if "HCIN" in v or "HICOM" in v:
-            return "HICOM / HCIN"
-        if "ONEOTT" in v or "OTT" in v or "CELERITY" in v:
-            return "CELERITY / ONEOTT"
-    return "OTHER"
+    name = classify_isp(row.get("isp") or row.get("owner") or "")
+    if name == "HCIN":
+        return "HICOM / HCIN"
+    if name == "ONEOTT":
+        return "CELERITY / ONEOTT"
+    return name
 
 
 def build_note(ho_open, branch_sites, backup_on):
@@ -214,6 +214,10 @@ same_day_resolved = all_df[resolved_on_day & raised_on_day].copy()
 open_now["vendor"] = open_now.apply(vendor_bucket, axis=1)
 celerity_open = open_now[open_now["vendor"] == "CELERITY / ONEOTT"]
 hicom_open = open_now[open_now["vendor"] == "HICOM / HCIN"]
+other_vendors = sorted(
+    v for v in open_now["vendor"].dropna().astype(str).unique()
+    if v not in ("CELERITY / ONEOTT", "HICOM / HCIN", "UNKNOWN", "OTHER", "")
+)
 
 total_open = int(len(open_now))
 
@@ -245,6 +249,9 @@ kpis = [
     ("CELERITY Open", int(len(celerity_open)), "#00B0F0"),
     ("HICOM Open", int(len(hicom_open)), "#1A237E"),
 ]
+extra_palette = ["#6D28D9", "#0D9488", "#EA580C", "#4F46E5", "#BE185D"]
+for i, v in enumerate(other_vendors):
+    kpis.append((f"{v} Open", int((open_now["vendor"] == v).sum()), extra_palette[i % len(extra_palette)]))
 
 st.markdown('<div class="vpn-wrap">', unsafe_allow_html=True)
 st.markdown('<div class="vpn-head">XTRANET UPDATE</div>', unsafe_allow_html=True)
@@ -271,7 +278,7 @@ if png:
     st.image(png, caption="Yahi size / text screenshot jaisa hai")
 
 st.markdown("---")
-tabs = st.tabs([
+tab_labels = [
     f"Open ({dlabel})",
     "Old open",
     f"Raised {dlabel}",
@@ -280,7 +287,8 @@ tabs = st.tabs([
     "Same-day resolved",
     "CELERITY open",
     "HICOM open",
-])
+] + [f"{v} open" for v in other_vendors]
+tabs = st.tabs(tab_labels)
 
 show_cols = [c for c in [
     "ticket_id", "site_code", "status", "submitted_time", "resolved_time",
@@ -313,6 +321,9 @@ with tabs[6]:
     table(celerity_open)
 with tabs[7]:
     table(hicom_open)
+for i, v in enumerate(other_vendors):
+    with tabs[8 + i]:
+        table(open_now[open_now["vendor"] == v])
 
 sum_df = pd.DataFrame([(a, b) for a, b, _ in kpis], columns=["Metric", "Count"])
 sum_df.loc[len(sum_df)] = ["HO Open (manual)", int(ho_open)]
@@ -322,12 +333,15 @@ sum_df.loc[len(sum_df)] = ["Branch down (no backup)", int(down_n)]
 buf = BytesIO()
 with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
     sum_df.to_excel(w, index=False, sheet_name="Snapshot")
-    for name, df in [
+    xl_parts = [
         ("Open", open_now), ("Old_Open", old_open), ("Raised", today_raised),
         ("Call_On_Hold", call_hold),
         ("Old_Resolved", old_resolved), ("Same_Day_Resolved", same_day_resolved),
         ("Celerity_Open", celerity_open), ("Hicom_Open", hicom_open),
-    ]:
+    ]
+    for v in other_vendors:
+        xl_parts.append((str(v)[:28], open_now[open_now["vendor"] == v]))
+    for name, df in xl_parts:
         cols = [c for c in show_cols if c in df.columns]
         if cols and not df.empty:
             df[cols].to_excel(w, index=False, sheet_name=name[:31])

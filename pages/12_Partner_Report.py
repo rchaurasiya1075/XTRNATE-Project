@@ -8,7 +8,7 @@ import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready
-from utils.data_processing import process_closed_tickets
+from utils.data_processing import process_closed_tickets, classify_isp, isp_options
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 
 st.set_page_config(
@@ -236,22 +236,13 @@ work["related_to"] = refined["related_to"]
 work["sla_band"] = work["resolution_hours"].apply(sla_bucket)
 
 
-def isp_of(val):
-    s = str(val or "").upper()
-    if "HCIN" in s:
-        return "HCIN"
-    if any(x in s for x in ["ONEOTT", "OTT", "CELERITY"]):
-        return "ONEOTT"
-    return "OTHER"
-
-
 if "isp" not in work.columns:
-    work["isp"] = work.get("owner", "").apply(isp_of)
+    work["isp"] = work.get("owner", "").apply(classify_isp)
 else:
     work["isp"] = work["isp"].fillna("").astype(str)
-    mask = work["isp"].isin(["", "OTHER", "nan"])
+    mask = work["isp"].isin(["", "OTHER", "nan", "UNKNOWN"])
     if mask.any() and "owner" in work.columns:
-        work.loc[mask, "isp"] = work.loc[mask, "owner"].apply(isp_of)
+        work.loc[mask, "isp"] = work.loc[mask, "owner"].apply(classify_isp)
 
 if "status" in work.columns:
     sl = work["status"].astype(str).str.lower()
@@ -262,7 +253,7 @@ if "status" in work.columns:
 st.markdown("---")
 f1, f2, f3 = st.columns([1, 1, 2])
 with f1:
-    partner = st.radio("Select Partner", ["HCIN", "ONEOTT", "ALL"], horizontal=True)
+    partner = st.radio("Select Partner", isp_options(work) or ["ALL"], horizontal=True)
 with f2:
     date_mode = st.radio("Date", ["Last N months", "From – To"], horizontal=True)
 with f3:

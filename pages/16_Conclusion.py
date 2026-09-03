@@ -9,7 +9,7 @@ import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, show_last_update
-from utils.data_processing import detect_category, get_summary_stats
+from utils.data_processing import detect_category, get_summary_stats, isp_options, classify_isp
 from utils.meeting_deck import build_meeting_pptx
 from utils.remark_tags import apply_tags, dt_hrs
 
@@ -18,7 +18,7 @@ show_last_update()
 ensure_ready()
 
 st.title("🧠 Conclusion Dashboard")
-st.caption("Meeting report • HCIN / ONEOTT alag • Last remark tags • Outage click → site details • 15-slide PPT")
+st.caption("Meeting report • saare ISP (Owner) • Last remark tags • Outage click → site details • 15-slide PPT")
 
 closed = st.session_state.get("closed_df")
 opened = st.session_state.get("open_df")
@@ -39,7 +39,10 @@ if "category" in work.columns:
     work.loc[blank, "outage_class"] = work.loc[blank, "category"].astype(str)
 work = apply_tags(work)
 
-partner = st.radio("ISP report", ["HCIN", "ONEOTT"], horizontal=True)
+opts = isp_options(work)
+if not opts:
+    opts = ["ALL"]
+partner = st.radio("ISP report", opts, horizontal=True)
 today = date.today()
 c1, c2 = st.columns(2)
 with c1:
@@ -50,14 +53,14 @@ with c2:
 def isp_filter(df):
     if df is None or df.empty:
         return pd.DataFrame()
+    if partner == "ALL":
+        return df.copy()
     if "isp" in df.columns:
         out = df[df["isp"] == partner]
         if not out.empty:
             return out.copy()
     if "owner" in df.columns:
-        own = df["owner"].astype(str).str.upper()
-        key = "HCIN|HICOM" if partner == "HCIN" else "ONEOTT|OTT|CELERITY"
-        return df[own.str.contains(key, na=False)].copy()
+        return df[df["owner"].map(classify_isp) == partner].copy()
     return df.copy()
 
 hist = isp_filter(work)

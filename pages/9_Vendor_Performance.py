@@ -15,7 +15,7 @@ st.markdown("Owner / Partner wise tickets, downtime, resolution time aur repeat 
 
 isp = st.session_state.get('selected_isp')
 if not isp:
-    st.warning("Home page se ISP select karo (HCIN / ONEOTT / ALL).")
+    st.warning("Home page se ISP select karo (Owner ke saare ISP / ALL).")
     st.stop()
 
 closed_df = st.session_state.get('closed_df')
