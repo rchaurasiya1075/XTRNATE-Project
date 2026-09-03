@@ -77,4 +77,54 @@ if st.session_state.closed_df is not None or st.session_state.open_df is not Non
         st.caption("Tickets by ISP: " + " • ".join(f"{k}={int(v)}" for k, v in vc.items()))
 
 st.markdown("---")
-st.caption("Sidebar categories: Tickets • SIM & Data • Reports • Tools")
+st.markdown("### Pages")
+st.caption("Category-wise — click karke page kholo. Sidebar mein bhi yahi groups hain.")
+
+PAGE_CATS = [
+    ("🎫 Tickets", [
+        ("pages/1_Dashboard.py", "Dashboard", "📊"),
+        ("pages/4_Open_Escalation.py", "Open Escalation", "🚨"),
+        ("pages/7_Open_Calls_Dashboard.py", "Open Calls", "📞"),
+        ("pages/3_Closed_Analysis.py", "Closed Analysis", "✅"),
+        ("pages/6_Repeat_Analysis.py", "Repeat Analysis", "🔁"),
+    ]),
+    ("⚖️ ISP & Partner", [
+        ("pages/8_ISP_Comparison.py", "ISP Comparison", "⚖️"),
+        ("pages/12_Partner_Report.py", "Partner Report", "📄"),
+        ("pages/9_Vendor_Performance.py", "Vendor Performance", "📈"),
+        ("pages/20_Vendor_Change.py", "Vendor Change", "🔄"),
+    ]),
+    ("📅 SLA & Reports", [
+        ("pages/11_Monthly_SLA_Report.py", "Monthly SLA", "📅"),
+        ("pages/10_Penalty_SLA.py", "Penalty SLA", "⚠️"),
+        ("pages/17_Holiday_Downtime.py", "Holiday Downtime", "🎆"),
+        ("pages/16_Conclusion.py", "Conclusion PPT", "📚"),
+    ]),
+    ("📡 Daily Ops", [
+        ("pages/14_VPN_Update.py", "VPN Update", "📡"),
+        ("pages/15_Pending_Mail.py", "Pending Mail", "✉️"),
+    ]),
+    ("📶 SIM & Last Mile", [
+        ("pages/19_SIM_Inventory.py", "SIM Inventory", "📱"),
+        ("pages/18_SIM_Backup_Usage.py", "SIM Data Usage", "📶"),
+        ("pages/13_Circuit_ID.py", "Circuit ID", "🔗"),
+        ("pages/21_LC_Master.py", "LC Master", "📋"),
+        ("pages/22_Last_Mile_Update.py", "Last Mile Update", "📍"),
+    ]),
+    ("🔧 Tools", [
+        ("pages/0_Site_Search.py", "Site Search", "🔍"),
+        ("pages/2_Upload_Data.py", "Upload Data", "📤"),
+        ("pages/5_Escalation_Matrix.py", "Escalation Matrix", "⚙️"),
+    ]),
+]
+
+r1 = PAGE_CATS[:3]
+r2 = PAGE_CATS[3:]
+for row in (r1, r2):
+    cols = st.columns(len(row), gap="small")
+    for col, (cat, items) in zip(cols, row):
+        with col:
+            with st.container(border=True):
+                st.markdown(f"**{cat}**")
+                for path, label, icon in items:
+                    st.page_link(path, label=label, icon=icon)
