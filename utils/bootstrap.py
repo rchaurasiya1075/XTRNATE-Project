@@ -187,7 +187,10 @@ def render_isp_multiselect(location="main", key="isp_multi_main"):
     elif src and src != key:
         st.session_state[key] = stored
 
-    box = st.sidebar if location == "sidebar" else st
+    if location == "sidebar":
+        box = st.sidebar
+    else:
+        box = st.container()
     with box:
         if location == "sidebar":
             st.markdown("**ISP / Partner filter**")
