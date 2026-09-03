@@ -35,7 +35,7 @@ st.set_page_config(page_title="SIM Backup Usage | XTRNATE", page_icon="📶", la
 show_last_update()
 
 st.title("📶 SIM Backup Usage vs BB Down")
-st.caption("Backup SIM data • 10 GB plan • GB columns: `Aug Usage in GB`, `Sep Usage in GB` • High usage = BB down chance")
+st.caption("Backup SIM data • 10 GB plan • Site list: Branch + State + ISP (HCIN/OTT) sheet se")
 
 ensure_ready()
 if st.session_state.get("closed_df") is None:
@@ -66,16 +66,14 @@ def month_from_col(col):
 
 
 def detect_gb_columns(columns):
-    """Prefer '* Usage in GB' / 'Aug Usage in GB'. Skip raw MB if GB exists."""
     best = {}
     for c in columns:
         mon = month_from_col(c)
         if not mon:
             continue
         cl = str(c).lower()
-        is_gb = "gb" in cl
         score = 0
-        if is_gb:
+        if "gb" in cl:
             score += 5
         if "usage" in cl:
             score += 2
@@ -85,6 +83,35 @@ def detect_gb_columns(columns):
         if prev is None or score > prev[1]:
             best[mon] = (c, score)
     return [(m, best[m][0]) for m in MONTHS if MONTH_ALIAS[m] in best for m in [MONTH_ALIAS[m]]]
+
+
+def find_col(df, *names):
+    lower = {str(c).strip().lower(): c for c in df.columns}
+    for n in names:
+        if n.lower() in lower:
+            return lower[n.lower()]
+    for key, col in lower.items():
+        for n in names:
+            if n.lower() in key:
+                return col
+    return None
+
+
+def clean_cell(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return ""
+    s = str(v).strip()
+    return "" if s.lower() in ("nan", "none", "-", "—") else s
+
+
+def norm_isp(v):
+    u = str(v or "").upper()
+    if "HCIN" in u or "HICOM" in u:
+        return "HCIN"
+    if "ONEOTT" in u or "OTT" in u or "CELERITY" in u:
+        return "ONEOTT"
+    s = clean_cell(v)
+    return s
 
 
 @st.cache_data(ttl=180)
@@ -112,11 +139,19 @@ if usage is None or usage.empty:
     st.warning("SIM usage sheet empty.")
     st.stop()
 
-site_col = next(
-    (c for c in usage.columns if str(c).strip().lower() in ("site code", "sitecode", "hughessitecode")),
-    usage.columns[0],
-)
+site_col = find_col(usage, "site code", "sitecode", "hughessitecode") or usage.columns[0]
 usage["site_code"] = usage[site_col].astype(str).str.strip().str.upper()
+
+isp_c = find_col(usage, "isp name", "isp")
+br_c = find_col(usage, "branch name", "branch")
+st_c = find_col(usage, "state")
+ckt_c = find_col(usage, "ckt id")
+addr_c = find_col(usage, "branch address")
+usage["isp_name"] = usage[isp_c].map(norm_isp) if isp_c else ""
+usage["branch_name"] = usage[br_c].map(clean_cell) if br_c else ""
+usage["state_name"] = usage[st_c].map(clean_cell) if st_c else ""
+usage["ckt_id"] = usage[ckt_c].map(clean_cell) if ckt_c else ""
+usage["branch_address"] = usage[addr_c].map(clean_cell) if addr_c else ""
 
 gb_cols = detect_gb_columns(usage.columns)
 if not gb_cols:
@@ -176,7 +211,15 @@ else:
 
 merged = long_df.merge(downs, on=["site_code", "month"], how="left")
 merged["bb_downs"] = merged["bb_downs"].fillna(0).astype(int)
-merged["isp"] = merged["isp"].fillna("UNKNOWN")
+if "isp" not in merged.columns:
+    merged["isp"] = ""
+merged["isp"] = merged["isp"].fillna("")
+if "isp_name" in merged.columns:
+    sheet_ok = merged["isp_name"].isin(["HCIN", "ONEOTT"])
+    merged.loc[sheet_ok, "isp"] = merged.loc[sheet_ok, "isp_name"]
+    miss = ~merged["isp"].isin(["HCIN", "ONEOTT"])
+    merged.loc[miss, "isp"] = merged.loc[miss, "isp_name"].replace("", pd.NA).fillna(merged.loc[miss, "isp"])
+merged["isp"] = merged["isp"].replace({"": "UNKNOWN", "OTHER": "UNKNOWN"}).fillna("UNKNOWN")
 merged["plan_pct"] = (merged["usage_gb"] / PLAN_GB * 100).round(1)
 merged["near_cap"] = merged["usage_gb"] >= PLAN_GB * 0.8
 
@@ -232,7 +275,7 @@ with g1:
     top = view.nlargest(20, "usage_gb")
     fig = px.bar(
         top, x="site_code", y="usage_gb", color="month",
-        hover_data=["bb_downs", "isp", "Telco"] if "Telco" in top.columns else ["bb_downs", "isp"],
+        hover_data=[c for c in ["bb_downs", "isp", "branch_name", "state_name", "Telco"] if c in top.columns],
         title="Top 20 SIM usage (GB)",
     )
     fig.update_layout(template="plotly_dark", height=380, xaxis_tickangle=-40)
@@ -271,24 +314,35 @@ mon["avg_gb"] = mon["avg_gb"].round(2)
 st.dataframe(mon, use_container_width=True, hide_index=True)
 
 st.subheader("Site list")
-show = view[[c for c in [
-    "site_code", "month", "usage_gb", "plan_pct", "bb_downs", "isp",
-    "Telco", "IP Address", "MDN Number", "Asset Number", "last_reason",
+st.caption("Branch / State / ISP (Celerity → ONEOTT, HCIN) isi sheet se: gid 710549453")
+show_src = view[[c for c in [
+    "site_code", "branch_name", "state_name", "isp", "ckt_id", "month",
+    "usage_gb", "plan_pct", "bb_downs", "Telco", "IP Address", "MDN Number",
+    "Asset Number", "branch_address", "last_reason",
 ] if c in view.columns]].copy()
-show = show.rename(columns={
+show = show_src.rename(columns={
     "site_code": "Site Code",
+    "branch_name": "Branch",
+    "state_name": "State",
+    "isp": "ISP",
+    "ckt_id": "CKT ID",
     "month": "Month",
     "usage_gb": "SIM Usage GB",
     "plan_pct": "% of 10GB",
     "bb_downs": "BB Downs (same month)",
-    "isp": "ISP",
+    "branch_address": "Branch Address",
     "last_reason": "Last BB remark",
 })
 st.dataframe(show, use_container_width=True, height=480)
 
 pick = st.selectbox("Site ka month-wise detail", ["—"] + sorted(view["site_code"].unique().tolist()))
 if pick and pick != "—":
-    one = merged[merged["site_code"] == pick][["month", "usage_gb", "plan_pct", "bb_downs", "isp"]].copy()
+    meta = view[view["site_code"] == pick].iloc[0]
+    st.markdown(
+        f"**{pick}** • {meta.get('isp', '')} • {meta.get('branch_name', '')} • {meta.get('state_name', '')}"
+    )
+    cols_one = [c for c in ["month", "usage_gb", "plan_pct", "bb_downs", "isp", "branch_name", "state_name"] if c in merged.columns]
+    one = merged[merged["site_code"] == pick][cols_one].copy()
     one["_ord"] = one["month"].str.lower().map({m: i for i, m in enumerate(MONTHS)})
     one = one.sort_values("_ord").drop(columns="_ord")
     st.dataframe(one, use_container_width=True, hide_index=True)
