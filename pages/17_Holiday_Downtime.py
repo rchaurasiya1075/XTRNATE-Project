@@ -9,6 +9,7 @@ import streamlit as st
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, show_last_update
 from utils.holiday_sla import PUBLIC, adjust_ticket, parse_extra_dates
+from utils.data_processing import isp_options, classify_isp
 
 st.set_page_config(page_title="Holiday Downtime | XTRNATE", page_icon="🎉", layout="wide")
 show_last_update()
@@ -32,8 +33,11 @@ work = closed.copy()
 for c in ("submitted_time", "resolved_time"):
     if c in work.columns:
         work[c] = pd.to_datetime(work[c], errors="coerce")
+if "isp" not in work.columns and "owner" in work.columns:
+    work["isp"] = work["owner"].map(classify_isp)
 
-partner = st.radio("ISP", ["ALL", "HCIN", "ONEOTT"], horizontal=True)
+opts = isp_options(work)
+partner = st.radio("ISP", opts or ["ALL"], horizontal=True)
 today = date.today()
 c1, c2 = st.columns(2)
 with c1:
@@ -50,10 +54,6 @@ extra = parse_extra_dates(extra_txt)
 
 if partner != "ALL" and "isp" in work.columns:
     view = work[work["isp"] == partner].copy()
-elif partner != "ALL" and "owner" in work.columns:
-    own = work["owner"].astype(str).str.upper()
-    key = "HCIN|HICOM" if partner == "HCIN" else "ONEOTT|OTT|CELERITY"
-    view = work[own.str.contains(key, na=False)].copy()
 else:
     view = work.copy()
 
