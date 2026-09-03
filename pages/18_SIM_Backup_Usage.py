@@ -16,12 +16,26 @@ USAGE_GID = "710549453"
 PLAN_GB = 10.0
 MONTHS = ["january", "february", "march", "april", "may", "june",
           "july", "august", "september", "october", "november", "december"]
+MONTH_ALIAS = {
+    "jan": "January", "january": "January",
+    "feb": "February", "february": "February",
+    "mar": "March", "march": "March",
+    "apr": "April", "april": "April",
+    "may": "May",
+    "jun": "June", "june": "June",
+    "jul": "July", "july": "July",
+    "aug": "August", "august": "August",
+    "sep": "September", "sept": "September", "september": "September",
+    "oct": "October", "october": "October",
+    "nov": "November", "november": "November",
+    "dec": "December", "december": "December",
+}
 
 st.set_page_config(page_title="SIM Backup Usage | XTRNATE", page_icon="📶", layout="wide")
 show_last_update()
 
 st.title("📶 SIM Backup Usage vs BB Down")
-st.caption("Backup SIM data (Jio) • 10 GB plan • High usage = BB down chance • Map with ticket downs • HCIN / OTT")
+st.caption("Backup SIM data • 10 GB plan • GB columns: `Aug Usage in GB`, `Sep Usage in GB` • High usage = BB down chance")
 
 ensure_ready()
 if st.session_state.get("closed_df") is None:
@@ -41,19 +55,52 @@ def parse_gb(v):
 
 
 def month_from_col(col):
-    t = str(col).lower()
-    for m in MONTHS:
-        if m in t:
-            return m.title()
-    return None
+    tokens = re.findall(r"[a-z]+", str(col).lower())
+    hit = None
+    for tok in tokens:
+        if tok in MONTH_ALIAS:
+            name = MONTH_ALIAS[tok]
+            if hit is None or len(tok) > 3:
+                hit = name
+    return hit
 
 
-@st.cache_data(ttl=300)
+def detect_gb_columns(columns):
+    """Prefer '* Usage in GB' / 'Aug Usage in GB'. Skip raw MB if GB exists."""
+    best = {}
+    for c in columns:
+        mon = month_from_col(c)
+        if not mon:
+            continue
+        cl = str(c).lower()
+        is_gb = "gb" in cl
+        score = 0
+        if is_gb:
+            score += 5
+        if "usage" in cl:
+            score += 2
+        if "in gb" in cl:
+            score += 3
+        prev = best.get(mon)
+        if prev is None or score > prev[1]:
+            best[mon] = (c, score)
+    return [(m, best[m][0]) for m in MONTHS if MONTH_ALIAS[m] in best for m in [MONTH_ALIAS[m]]]
+
+
+@st.cache_data(ttl=180)
 def load_usage():
     df = load_sheet_as_csv(SHEET_ID, gid=USAGE_GID)
     df.columns = [str(c).strip() for c in df.columns]
     return df
 
+
+c1, c2 = st.columns([2, 1])
+with c1:
+    st.markdown("### Sheet")
+with c2:
+    if st.button("🔄 Reload Excel / sheet", use_container_width=True):
+        load_usage.clear()
+        st.rerun()
 
 try:
     usage = load_usage()
@@ -65,20 +112,19 @@ if usage is None or usage.empty:
     st.warning("SIM usage sheet empty.")
     st.stop()
 
-# Site code column
-site_col = next((c for c in usage.columns if str(c).strip().lower() in ("site code", "sitecode", "hughessitecode")), usage.columns[0])
+site_col = next(
+    (c for c in usage.columns if str(c).strip().lower() in ("site code", "sitecode", "hughessitecode")),
+    usage.columns[0],
+)
 usage["site_code"] = usage[site_col].astype(str).str.strip().str.upper()
 
-gb_cols = []
-for c in usage.columns:
-    if "usage in gb" in str(c).lower() or ("gb" in str(c).lower() and month_from_col(c)):
-        mon = month_from_col(c)
-        if mon:
-            gb_cols.append((mon, c))
-
+gb_cols = detect_gb_columns(usage.columns)
 if not gb_cols:
-    st.error("Month GB columns nahi mili (June usage in GB / July Usage in GB).")
+    st.error("Month GB columns nahi mili. Header example: `Aug Usage in GB`")
+    st.write("Sheet columns:", list(usage.columns))
     st.stop()
+
+st.success("GB columns: " + " • ".join(f"**{m}** ← `{c}`" for m, c in gb_cols))
 
 long_rows = []
 for mon, col in gb_cols:
@@ -88,7 +134,6 @@ for mon, col in gb_cols:
     long_rows.append(tmp)
 long_df = pd.concat(long_rows, ignore_index=True)
 
-# Ticket history
 closed = st.session_state.get("closed_df")
 raw = st.session_state.get("raw_tickets_df")
 open_df = st.session_state.get("open_df")
@@ -135,7 +180,6 @@ merged["isp"] = merged["isp"].fillna("UNKNOWN")
 merged["plan_pct"] = (merged["usage_gb"] / PLAN_GB * 100).round(1)
 merged["near_cap"] = merged["usage_gb"] >= PLAN_GB * 0.8
 
-# Site-level ISP fallback from any month tickets
 if not tix.empty and "site_code" in tix.columns:
     site_isp = tix.groupby("site_code")["isp"].agg(
         lambda s: s.mode().iloc[0] if len(s.dropna()) else "UNKNOWN"
@@ -148,7 +192,10 @@ f1, f2, f3, f4 = st.columns([1.2, 1.2, 1.4, 1.4])
 with f1:
     partner = st.radio("ISP", ["ALL", "HCIN", "ONEOTT"], horizontal=True)
 with f2:
-    months_avail = sorted(merged["month"].dropna().unique().tolist(), key=lambda x: MONTHS.index(x.lower()) if x.lower() in MONTHS else 99)
+    months_avail = sorted(
+        merged["month"].dropna().unique().tolist(),
+        key=lambda x: MONTHS.index(x.lower()) if x.lower() in MONTHS else 99,
+    )
     month_sel = st.multiselect("Month", months_avail, default=months_avail)
 with f3:
     min_gb = st.slider("Min SIM usage (GB)", 0.0, 15.0, 5.0, 0.5)
@@ -170,8 +217,8 @@ k1, k2, k3, k4, k5 = st.columns(5)
 k1.metric("Sites (filter)", view["site_code"].nunique())
 k2.metric("Rows", len(view))
 k3.metric("Avg usage GB", round(view["usage_gb"].mean(), 2) if not view.empty else 0)
-k4.metric(f"≥ {PLAN_GB:.0f} GB (plan cap)", int((view["usage_gb"] >= PLAN_GB).sum()))
-k5.metric("BB downs (un sites pe)", int(view["bb_downs"].sum()))
+k4.metric(f"≥ {PLAN_GB:.0f} GB (plan cap)", int((view["usage_gb"] >= PLAN_GB).sum()) if not view.empty else 0)
+k5.metric("BB downs (un sites pe)", int(view["bb_downs"].sum()) if not view.empty else 0)
 
 if view.empty:
     st.info("Is filter pe site nahi mili. Usage limit kam karo ya month badlo.")
@@ -201,6 +248,7 @@ with g2:
     fig.add_hline(y=PLAN_GB, line_dash="dash", line_color="#f87171")
     st.plotly_chart(fig, use_container_width=True)
 
+split = pd.DataFrame()
 if "isp" in view.columns:
     st.subheader("ISP split")
     split = view.groupby("isp").agg(
@@ -240,20 +288,24 @@ st.dataframe(show, use_container_width=True, height=480)
 
 pick = st.selectbox("Site ka month-wise detail", ["—"] + sorted(view["site_code"].unique().tolist()))
 if pick and pick != "—":
-    one = merged[merged["site_code"] == pick][["month", "usage_gb", "plan_pct", "bb_downs", "isp"]].sort_values("month")
+    one = merged[merged["site_code"] == pick][["month", "usage_gb", "plan_pct", "bb_downs", "isp"]].copy()
+    one["_ord"] = one["month"].str.lower().map({m: i for i, m in enumerate(MONTHS)})
+    one = one.sort_values("_ord").drop(columns="_ord")
     st.dataframe(one, use_container_width=True, hide_index=True)
     if not tix.empty:
         hist = tix[(tix["site_code"] == pick)]
         if not hist.empty:
             hc = [c for c in ["ticket_id", "submitted_time", "resolved_time", "isp", "status", "reason", "down_time_min"] if c in hist.columns]
             st.markdown(f"**{pick}** BB tickets")
-            st.dataframe(hist[hc].sort_values(hc[1] if len(hc) > 1 else hc[0], ascending=False), use_container_width=True, height=280)
+            sortc = hc[1] if len(hc) > 1 else hc[0]
+            st.dataframe(hist[hc].sort_values(sortc, ascending=False), use_container_width=True, height=280)
 
 buf = BytesIO()
 with pd.ExcelWriter(buf, engine="xlsxwriter") as w:
     show.to_excel(w, index=False, sheet_name="Site_Usage_Downs")
     mon.to_excel(w, index=False, sheet_name="Month_ISP")
-    split.to_excel(w, index=False, sheet_name="ISP_Split")
+    if not split.empty:
+        split.to_excel(w, index=False, sheet_name="ISP_Split")
 
 st.download_button(
     "📥 Excel — SIM usage + BB downs",
