@@ -207,7 +207,7 @@ def _hist_view(df):
 
 
 def render_multi_site_pack():
-    st.markdown("**Paste many site codes** — comma / space / new line. Ek saath history + SIM + last mile + LC + circuit.")
+    st.markdown("**Paste site codes** — comma / space / new line. Ek saath history + SIM + last mile + LC + circuit.")
     blob = st.text_area(
         "Site codes",
         placeholder="XTNNTL358\nXTNCHG364, XTNSLN354  XTNDEL201",

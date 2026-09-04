@@ -10,24 +10,24 @@ import pandas as pd
 
 IST = ZoneInfo("Asia/Kolkata")
 
-# Forest green (attrition-report style)
-NAVY = "#1F513F"
-GOLD = "#2D6A4F"
-SKY = "#1F513F"
-CYAN = "#D8EDE4"
+# Exact attrition-report forest green
+NAVY = "#1B4D3E"
+GOLD = "#1B4D3E"
+SKY = "#1B4D3E"
+CYAN = "#E8F0EC"
 WHITE = "#FFFFFF"
-INK = "#1A1A1A"
+INK = "#1F1F1F"
 MUTED = "#6B7280"
-ALT = "#F0F4F2"
+ALT = "#F3F5F4"
 ROW = "#FFFFFF"
-BORDER = "#C9D4CE"
-GREEN_BG, GREEN_FG = "#E8F5EE", "#1F513F"
+BORDER = "#D4D9D6"
+GREEN_BG, GREEN_FG = "#E8F0EC", "#1B4D3E"
 YELLOW_BG, YELLOW_FG = "#FFF8E7", "#92400E"
 RED_BG, RED_FG = "#FDECEC", "#9F1239"
-TOTAL_BG, TOTAL_FG = "#1F513F", "#FFFFFF"
-TITLE_SUB_BG = "#163D30"
+TOTAL_BG, TOTAL_FG = "#1B4D3E", "#FFFFFF"
+TITLE_SUB_BG = "#153D31"
 
-TAB_COLORS = ["1F513F", "2D6A4F", "14532D", "3F5E56", "0F766E", "365314"]
+TAB_COLORS = ["1B4D3E", "2D6A4F", "14532D", "3F5E56", "0F766E", "365314"]
 
 WRAP_HINTS = (
     "reason", "root_cause", "problem_reported", "final_action", "explanation",
@@ -161,7 +161,7 @@ def _cell_python(val):
 def _formats(wb):
     base = {
         "font_name": "Calibri",
-        "font_size": 10,
+        "font_size": 11,
         "border": 1,
         "border_color": BORDER,
         "valign": "vcenter",
@@ -175,19 +175,18 @@ def _formats(wb):
 
     return {
         "title": wb.add_format({
-            "font_name": "Calibri", "font_size": 18, "bold": True,
+            "font_name": "Calibri", "font_size": 16, "bold": True,
             "font_color": WHITE, "bg_color": NAVY, "align": "left", "valign": "vcenter",
         }),
-        "gold": wb.add_format({"bg_color": GOLD}),
         "sub": wb.add_format({
             "font_name": "Calibri", "font_size": 9,
-            "font_color": "#D8EDE4", "bg_color": TITLE_SUB_BG, "align": "left", "valign": "vcenter",
+            "font_color": WHITE, "bg_color": TITLE_SUB_BG, "align": "left", "valign": "vcenter",
         }),
         "header": f(bold=True, font_color=WHITE, bg_color=NAVY, align="center", font_size=10, text_wrap=True),
-        "cell": f(font_color=INK, bg_color=ROW, align="left", font_size=10),
-        "cell_alt": f(font_color=INK, bg_color=ALT, align="left", font_size=10),
-        "cell_c": f(font_color=INK, bg_color=ROW, align="center", font_size=10),
-        "cell_alt_c": f(font_color=INK, bg_color=ALT, align="center", font_size=10),
+        "cell": f(font_color=INK, bg_color=ROW, align="left"),
+        "cell_alt": f(font_color=INK, bg_color=ALT, align="left"),
+        "cell_c": f(font_color=INK, bg_color=ROW, align="center"),
+        "cell_alt_c": f(font_color=INK, bg_color=ALT, align="center"),
         "num": f(font_color=INK, bg_color=ROW, align="center", num_format="#,##0"),
         "num_alt": f(font_color=INK, bg_color=ALT, align="center", num_format="#,##0"),
         "num2": f(font_color=INK, bg_color=ROW, align="center", num_format="#,##0.00"),
@@ -205,8 +204,8 @@ def _formats(wb):
         "green": f(bold=True, font_color=GREEN_FG, bg_color=GREEN_BG, align="center"),
         "yellow": f(bold=True, font_color=YELLOW_FG, bg_color=YELLOW_BG, align="center"),
         "red": f(bold=True, font_color=RED_FG, bg_color=RED_BG, align="center"),
-        "kpi_l": f(bold=True, font_color="#44403C", bg_color="#F6F3EE", align="left"),
-        "kpi_v": f(bold=True, font_color=NAVY, bg_color="#E8F5EE", align="center", font_size=12),
+        "kpi_l": f(bold=True, font_color=INK, bg_color=ALT, align="left"),
+        "kpi_v": f(bold=True, font_color=NAVY, bg_color=GREEN_BG, align="center", font_size=12),
     }
 
 
@@ -265,10 +264,9 @@ def write_sheet(writer, df, sheet_name, *, title="", subtitle="", tab_color=None
             pass
 
     ws.hide_gridlines(2)
-    ws.set_default_row(18)
-    ws.set_row(0, 30)
-    ws.set_row(1, 4)
-    ws.set_row(2, 18)
+    ws.set_default_row(20)
+    ws.set_row(0, 28)
+    ws.set_row(1, 18)
     last_col = max(ncols - 1, 0)
     banner = title or sheet_name
     stamp = datetime.now(IST).strftime("%d-%b-%Y %I:%M %p IST")
@@ -281,12 +279,10 @@ def write_sheet(writer, df, sheet_name, *, title="", subtitle="", tab_color=None
             ws.merge_range(r, 0, r, last_col, text, style)
 
     _merge_or_write(0, banner, fmt["title"])
-    for c in range(ncols):
-        ws.write_blank(1, c, None, fmt["gold"])
-    _merge_or_write(2, sub, fmt["sub"])
+    _merge_or_write(1, sub, fmt["sub"])
 
-    header_row = 3
-    ws.set_row(header_row, 32)
+    header_row = 2
+    ws.set_row(header_row, 36)
     for c, name in enumerate(cols):
         ws.write(header_row, c, str(name), fmt["header"])
         ws.set_column(c, c, _col_width(name, data[name] if name in data.columns else pd.Series(dtype=object)))

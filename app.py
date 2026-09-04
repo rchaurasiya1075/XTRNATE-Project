@@ -112,6 +112,7 @@ home = st.Page("home_page.py", title="Home", icon="📡", default=True)
 
 tickets = [
     st.Page("pages/1_Dashboard.py", title="Dashboard", icon="📊"),
+    st.Page("pages/23_Multi_Site_Tracker.py", title="Multi Site Tracker", icon="📋"),
     st.Page("pages/4_Open_Escalation.py", title="Open Escalation", icon="🚨"),
     st.Page("pages/7_Open_Calls_Dashboard.py", title="Open Calls", icon="📞"),
     st.Page("pages/3_Closed_Analysis.py", title="Closed Analysis", icon="✅"),

@@ -48,12 +48,16 @@ st.markdown("</div>", unsafe_allow_html=True)
 
 if site_q and (search_btn or site_q):
     render_site_history_panel(site_q.strip().upper())
-    st.markdown("---")
 
-st.markdown("### 📋 Multi-site pack")
-st.caption("Kai site codes ek saath paste — SIM, last mile, LC, circuit, full history. Excel + PDF.")
-render_multi_site_pack()
-st.markdown("---")
+st.markdown('<div class="search-card">', unsafe_allow_html=True)
+st.markdown("**📋 Multi Site Tracker** — kai site codes ek saath paste (comma / space / new line)")
+st.caption("Har site: ticket history + SIM + last mile + LC + circuit. Neeche Load all sites dabao.")
+try:
+    render_multi_site_pack()
+except Exception as e:
+    st.error("Multi Site Tracker load nahi hua.")
+    st.caption(str(e)[:240])
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("### ISP / Partner filter")
 st.caption("Ek se zyada ISP tick karo — sirf selected ka data har page pe dikhega. Naya ISP sheet mein aaya to list mein auto add.")
@@ -89,6 +93,7 @@ st.caption("Category-wise — click karke page kholo. Sidebar mein bhi yahi grou
 PAGE_CATS = [
     ("🎫 Tickets", [
         ("pages/1_Dashboard.py", "Dashboard", "📊"),
+        ("pages/23_Multi_Site_Tracker.py", "Multi Site Tracker", "📋"),
         ("pages/4_Open_Escalation.py", "Open Escalation", "🚨"),
         ("pages/7_Open_Calls_Dashboard.py", "Open Calls", "📞"),
         ("pages/3_Closed_Analysis.py", "Closed Analysis", "✅"),
