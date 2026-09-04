@@ -143,6 +143,7 @@ sim_lastmile = [
 ]
 tools = [
     st.Page("pages/0_Site_Search.py", title="Site Search", icon="🔍"),
+    st.Page("pages/24_Excel_to_PPT.py", title="Excel to PPT", icon="🎬"),
     st.Page("pages/2_Upload_Data.py", title="Upload Data", icon="📤"),
     st.Page("pages/5_Escalation_Matrix.py", title="Escalation Matrix", icon="⚙️"),
 ]

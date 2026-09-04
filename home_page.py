@@ -124,6 +124,7 @@ PAGE_CATS = [
     ]),
     ("🔧 Tools", [
         ("pages/0_Site_Search.py", "Site Search", "🔍"),
+        ("pages/24_Excel_to_PPT.py", "Excel to PPT", "🎬"),
         ("pages/2_Upload_Data.py", "Upload Data", "📤"),
         ("pages/5_Escalation_Matrix.py", "Escalation Matrix", "⚙️"),
     ]),
