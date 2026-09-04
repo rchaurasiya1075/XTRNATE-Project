@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.holiday_sla import PUBLIC, adjust_ticket, parse_extra_dates
 from utils.data_processing import isp_options, classify_isp
+from utils.pdf_export import pdf_bytes
 
 st.set_page_config(page_title="Holiday Downtime | XTRNATE", page_icon="🎉", layout="wide")
 ensure_ready()
@@ -116,8 +117,8 @@ with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
     ).to_excel(writer, index=False, sheet_name="Holiday_Calendar")
     wb = writer.book
     ws = writer.sheets["Adjusted_DT"]
-    title = wb.add_format({"bold": True, "font_size": 16, "font_color": "white", "bg_color": "#0F4C81", "align": "left"})
-    header = wb.add_format({"bold": True, "font_color": "white", "bg_color": "#0F4C81", "border": 1, "align": "center", "text_wrap": True})
+    title = wb.add_format({"bold": True, "font_size": 16, "font_color": "white", "bg_color": "#0B1F3A", "align": "left", "font_name": "Calibri"})
+    header = wb.add_format({"bold": True, "font_color": "white", "bg_color": "#0B1F3A", "border": 1, "align": "center", "text_wrap": True, "font_name": "Calibri"})
     even = wb.add_format({"bg_color": "#E8F1FA", "border": 1, "text_wrap": True, "valign": "top"})
     odd = wb.add_format({"bg_color": "#FFFFFF", "border": 1, "text_wrap": True, "valign": "top"})
     red = wb.add_format({"bg_color": "#FECACA", "border": 1, "bold": True})
@@ -150,10 +151,24 @@ with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
     ws.freeze_panes(3, 2)
     ws.autofilter(2, 0, 2 + len(out), len(out.columns) - 1)
 
-st.download_button(
-    "📥 Download styled Excel (raw / minus / adjusted + explanation)",
-    data=buf.getvalue(),
-    file_name=f"XTRNATE_Holiday_DT_{partner}_{start_day}_{end_day}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    use_container_width=True,
-)
+h1, h2 = st.columns(2)
+with h1:
+    st.download_button(
+        "📥 Holiday DT — Excel",
+        data=buf.getvalue(),
+        file_name=f"XTRNATE_Holiday_DT_{partner}_{start_day}_{end_day}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+with h2:
+    st.download_button(
+        "📄 Holiday DT — PDF",
+        data=pdf_bytes(
+            {"Adjusted_DT": out, "Holiday_Hits": hit},
+            title=f"Holiday Adjusted Downtime  ·  {partner}",
+            subtitle=f"{start_day} to {end_day}",
+        ),
+        file_name=f"XTRNATE_Holiday_DT_{partner}_{start_day}_{end_day}.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+    )

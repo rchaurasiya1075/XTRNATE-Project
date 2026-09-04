@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready
 from utils.google_sheets import load_sheet_as_csv
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 SHEET_ID = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
 GID = "1240520075"
@@ -185,13 +186,11 @@ show_cols = ["site_code"] + [colmap[k] for k in [
 show_cols = list(dict.fromkeys([c for c in show_cols if c in view.columns]))
 st.dataframe(view[show_cols], use_container_width=True, height=480)
 
-st.download_button(
-    "📥 Excel SIM Inventory (filtered)",
-    data=excel_bytes(
-        view[show_cols],
-        title="SIM Inventory",
-        sheet_name="SIM_Inventory",
-    ),
-    file_name="XTRNATE_SIM_Inventory.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+download_pack(
+    "SIM Inventory (filtered)",
+    view[show_cols],
+    file_stem="XTRNATE_SIM_Inventory",
+    title="SIM Inventory",
+    sheet_name="SIM_Inventory",
+    key="sim_inv_dl",
 )

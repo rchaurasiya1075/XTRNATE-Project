@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
 from utils.data_processing import classify_isp, isp_options
 from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
+from utils.pdf_export import pdf_bytes
 
 st.set_page_config(
     page_title="Monthly SLA Report | XTRNATE", page_icon="📅", layout="wide"
@@ -475,14 +476,14 @@ def to_excel():
 
         # Excel Dark/Modern Formats
         header_fmt = workbook.add_format({
-            "bg_color": "#0F172A",
+            "bg_color": "#0B1F3A",
             "font_color": "#F8FAFC",
             "bold": True,
             "align": "center",
             "valign": "vcenter",
             "border": 1,
             "border_color": "#334155",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
             "font_size": 10,
         })
 
@@ -494,19 +495,19 @@ def to_excel():
             "valign": "vcenter",
             "border": 1,
             "border_color": "#CBD5E1",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
             "font_size": 10,
         })
 
         total_row_fmt = workbook.add_format({
             "bg_color": "#1E293B",
-            "font_color": "#38BDF8",
+            "font_color": "#F5E6C8",
             "bold": True,
             "align": "center",
             "valign": "vcenter",
             "border": 1,
             "border_color": "#0F172A",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
             "font_size": 10,
         })
 
@@ -518,7 +519,7 @@ def to_excel():
             "valign": "vcenter",
             "border": 1,
             "border_color": "#FECACA",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
             "font_size": 10,
         })
 
@@ -530,7 +531,7 @@ def to_excel():
             "valign": "vcenter",
             "border": 1,
             "border_color": "#E2E8F0",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
         })
 
         yellow_fmt = workbook.add_format({
@@ -541,7 +542,7 @@ def to_excel():
             "valign": "vcenter",
             "border": 1,
             "border_color": "#E2E8F0",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
         })
 
         red_fmt = workbook.add_format({
@@ -552,7 +553,7 @@ def to_excel():
             "valign": "vcenter",
             "border": 1,
             "border_color": "#E2E8F0",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
         })
 
         blue_total_fmt = workbook.add_format({
@@ -563,7 +564,7 @@ def to_excel():
             "valign": "vcenter",
             "border": 1,
             "border_color": "#E2E8F0",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
         })
 
         purple_fmt = workbook.add_format({
@@ -574,7 +575,7 @@ def to_excel():
             "valign": "vcenter",
             "border": 1,
             "border_color": "#E2E8F0",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
         })
 
         zero_fmt = workbook.add_format({
@@ -584,7 +585,7 @@ def to_excel():
             "valign": "vcenter",
             "border": 1,
             "border_color": "#E2E8F0",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
         })
 
         # Apply Headers
@@ -670,7 +671,7 @@ def to_excel():
             "align": "center",
             "border": 1,
             "border_color": "#BAE6FD",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
             "font_size": 11,
         })
         kpi_lbl_fmt = workbook.add_format({
@@ -680,7 +681,7 @@ def to_excel():
             "align": "left",
             "border": 1,
             "border_color": "#E2E8F0",
-            "font_name": "Segoe UI",
+            "font_name": "Calibri",
             "font_size": 10,
         })
 
@@ -698,9 +699,26 @@ def to_excel():
     return out.getvalue()
 
 
-st.download_button(
-    f"📥 Download {selected_month} Monthly Sheet (Excel)",
-    data=to_excel(),
-    file_name=f"XTRNATE_SLA_{selected_month}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-)
+st.markdown("---")
+m1, m2 = st.columns(2)
+with m1:
+    st.download_button(
+        f"📥 {selected_month} Monthly Sheet — Excel",
+        data=to_excel(),
+        file_name=f"XTRNATE_SLA_{selected_month}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+with m2:
+    st.download_button(
+        f"📄 {selected_month} Monthly Sheet — PDF",
+        data=pdf_bytes(
+            {"Monthly_SLA": show},
+            title=f"Monthly SLA  ·  {selected_month}",
+            subtitle=isp_label(),
+            sheet_name="Monthly_SLA",
+        ),
+        file_name=f"XTRNATE_SLA_{selected_month}.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+    )

@@ -10,6 +10,7 @@ from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 from utils.data_processing import classify_isp
 from utils.bootstrap import ensure_ready
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 st.set_page_config(page_title="Circuit ID | XTRNATE", page_icon="🔌", layout="wide")
 ensure_ready()
@@ -175,45 +176,24 @@ else:
     st.caption("Table se bhi select karke Ctrl+C / long-press copy kar sakte ho.")
     
     # Export options for filtered results
-    exp_col1, exp_col2, _ = st.columns([1.5, 1.5, 3])
-    with exp_col1:
-        st.download_button(
-            label="📥 Download Results (CSV)",
-            data=matches[show_cols].to_csv(index=False).encode('utf-8'),
-            file_name=f"Circuit_SearchResults_{q}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
-    with exp_col2:
-        st.download_button(
-            label="📊 Download Results (Excel)",
-            data=get_excel_download(matches[show_cols], sheet_name="Filtered_Circuits", title="Circuit Search Results"),
-            file_name=f"Circuit_SearchResults_{q}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
+    download_pack(
+        "Search results",
+        matches[show_cols],
+        file_stem=f"Circuit_SearchResults_{q}",
+        title="Circuit Search Results",
+        sheet_name="Filtered_Circuits",
+        key="ckt_search_dl",
+    )
 
 with st.expander("All sites (master)", expanded=False):
     cols = [c for c in ['site_code', 'ckt_id', 'isp', 'state', 'branch_name', 'bank_name', 'address'] if c in master.columns]
     st.dataframe(master[cols], use_container_width=True, height=360, hide_index=True)
     
-    # Export options for master dataset
-    m_col1, m_col2, _ = st.columns([1.5, 1.5, 3])
-    with m_col1:
-        st.download_button(
-            label="📥 Export Master (CSV)",
-            data=master[cols].to_csv(index=False).encode('utf-8'),
-            file_name="Master_Circuit_List.csv",
-            mime="text/csv",
-            key="master_csv_download",
-            use_container_width=True
-        )
-    with m_col2:
-        st.download_button(
-            label="📊 Export Master (Excel)",
-            data=get_excel_download(master[cols], sheet_name="Master_Circuits", title="Master Circuit List"),
-            file_name="Master_Circuit_List.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="master_excel_download",
-            use_container_width=True
-        )
+    download_pack(
+        "Master Circuit List",
+        master[cols],
+        file_stem="Master_Circuit_List",
+        title="Master Circuit List",
+        sheet_name="Master_Circuits",
+        key="master_excel_download",
+    )

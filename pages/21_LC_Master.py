@@ -10,6 +10,7 @@ from utils.bootstrap import ensure_ready
 from utils.google_sheets import load_sheet_as_csv
 from utils.firebase_store import firebase_ready, upsert
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 from utils.sheet_write import (
     update_lc_excel, update_lc_excel_batch, test_sheet_write,
     phone_keys, unique_contact,
@@ -481,13 +482,11 @@ if q:
 st.markdown("---")
 st.subheader("LC tab (401145054) poori list")
 st.dataframe(old[["site_code", "lc_name", "lc_phone", "handled_by"]], use_container_width=True, height=300)
-st.download_button(
-    "Excel LC tab",
-    data=excel_bytes(
-        old[["site_code", "lc_name", "lc_phone", "handled_by"]] if set(["site_code", "lc_name", "lc_phone", "handled_by"]).issubset(old.columns) else old,
-        title="LC Master",
-        sheet_name="LC_Tab",
-    ),
-    file_name="lc_tab.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+download_pack(
+    "LC tab",
+    old[["site_code", "lc_name", "lc_phone", "handled_by"]] if set(["site_code", "lc_name", "lc_phone", "handled_by"]).issubset(old.columns) else old,
+    file_stem="lc_tab",
+    title="LC Master",
+    sheet_name="LC_Tab",
+    key="lc_tab_dl",
 )

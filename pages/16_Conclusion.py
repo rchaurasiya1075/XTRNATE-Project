@@ -13,6 +13,7 @@ from utils.data_processing import detect_category, get_summary_stats, isp_option
 from utils.meeting_deck import build_meeting_pptx
 from utils.remark_tags import apply_tags, dt_hrs
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 st.set_page_config(page_title="Conclusion | XTRNATE", page_icon="🧠", layout="wide")
 ensure_ready()
@@ -282,29 +283,22 @@ if not site_tbl.empty:
     xl_sheets["Sites"] = site_tbl
 xl_sheets["Drill"] = shown[cols]
 xl_sheets["AllTickets"] = view[cols]
-xl_bytes = excel_bytes(
+download_pack(
+    f"{partner} conclusion",
     xl_sheets,
+    file_stem=f"XTRNATE_Conclusion_{partner}_{start_day}_{end_day}",
     title=f"Conclusion  ·  {partner}",
     subtitle=f"{start_day} to {end_day}",
+    key="conclusion_dl",
 )
-d1, d2 = st.columns(2)
-with d1:
+try:
+    ppt = build_meeting_pptx(pack)
     st.download_button(
-        f"📥 Excel — {partner} conclusion",
-        data=xl_bytes,
-        file_name=f"XTRNATE_Conclusion_{partner}_{start_day}_{end_day}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        f"📚 15-slide PPT — {partner} meeting",
+        data=ppt,
+        file_name=f"XTRNATE_{partner}_Meeting_{start_day}_{end_day}.pptx",
+        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         use_container_width=True,
     )
-with d2:
-    try:
-        ppt = build_meeting_pptx(pack)
-        st.download_button(
-            f"📚 15-slide PPT — {partner} meeting",
-            data=ppt,
-            file_name=f"XTRNATE_{partner}_Meeting_{start_day}_{end_day}.pptx",
-            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            use_container_width=True,
-        )
-    except Exception as e:
-        st.error(f"PPT: {e}")
+except Exception as e:
+    st.error(f"PPT: {e}")

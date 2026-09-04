@@ -12,6 +12,7 @@ from utils.bootstrap import ensure_ready
 from utils.google_sheets import load_sheet_as_csv
 from utils.firebase_store import firebase_ready, upsert, get_one, list_all, _now
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 from utils.sheet_write import HEADERS, append_last_mile_log, sa_email
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -244,11 +245,13 @@ if firebase_ready():
                 "old_lc_name", "new_lc_name", "old_lc_contact", "new_lc_contact", "note",
             ] if c in hdf.columns]
             st.dataframe(hdf[cols].sort_values(cols[0] if cols else hdf.columns[0], ascending=False), use_container_width=True, height=360)
-            st.download_button(
-                "Excel last-mile history",
-                data=excel_bytes(hdf[cols] if cols else hdf, title="Last Mile Updates", sheet_name="History"),
-                file_name="last_mile_updates.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            download_pack(
+                "Last-mile history",
+                hdf[cols] if cols else hdf,
+                file_stem="last_mile_updates",
+                title="Last Mile Updates",
+                sheet_name="History",
+                key="lm_hist_dl",
             )
         else:
             st.caption("Abhi koi update save nahi.")

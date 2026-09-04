@@ -10,6 +10,7 @@ from utils.auto_load import auto_load_tickets
 from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import classify_isp, isp_options
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 st.set_page_config(page_title="VPN Update | XTRNATE", page_icon="📡", layout="wide")
 ensure_ready()
@@ -345,13 +346,11 @@ for name, df in [
     if cols and not df.empty:
         xl_parts[name] = df[cols]
 
-st.download_button(
-    f"📥 Excel VPN Update {dlabel}",
-    data=excel_bytes(
-        xl_parts,
-        title=f"VPN / Daily Update  ·  {dlabel}",
-        subtitle=str(ref_day),
-    ),
-    file_name=f"XTRANET_VPN_Update_{ref_day}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+download_pack(
+    f"VPN Update {dlabel}",
+    xl_parts,
+    file_stem=f"XTRANET_VPN_Update_{ref_day}",
+    title=f"VPN / Daily Update  ·  {dlabel}",
+    subtitle=str(ref_day),
+    key="vpn_dl",
 )

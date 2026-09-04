@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.data_processing import filter_by_period
 from utils.bootstrap import ensure_ready, apply_isp_filter
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 st.set_page_config(page_title="Repeat Analysis | XTRNATE", page_icon="🔁", layout="wide")
 
@@ -136,16 +137,14 @@ with tab1:
             st.dataframe(show_df, use_container_width=True, height=450)
 
             # Download this view
-            st.download_button(
-                "📥 Download this State/City tickets Excel",
-                data=excel_bytes(
-                    show_df,
-                    title=f"Repeat Drilldown  ·  {isp}",
-                    subtitle=f"{selected_state}  •  {selected_city}",
-                    sheet_name="Drilldown",
-                ),
-                file_name=f"XTRNATE_{isp}_{selected_state}_{selected_city}_tickets.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            download_pack(
+                "State/City tickets",
+                show_df,
+                file_stem=f"XTRNATE_{isp}_{selected_state}_{selected_city}_tickets",
+                title=f"Repeat Drilldown  ·  {isp}",
+                subtitle=f"{selected_state}  •  {selected_city}",
+                sheet_name="Drilldown",
+                key="repeat_drill_dl",
             )
         else:
             st.warning("Required columns not found.")
@@ -310,15 +309,13 @@ with tab5:
             height=450
         )
 
-        st.download_button(
-            "📥 Download Open Tickets Excel",
-            data=excel_bytes(
-                open_df[open_cols],
-                title=f"Open Tickets  ·  {isp}",
-                sheet_name="Open_Tickets",
-            ),
-            file_name=f"XTRNATE_Open_{isp}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        download_pack(
+            "Open Tickets",
+            open_df[open_cols],
+            file_stem=f"XTRNATE_Open_{isp}",
+            title=f"Open Tickets  ·  {isp}",
+            sheet_name="Open_Tickets",
+            key="repeat_open_dl",
         )
 
 # ===================== DOWNLOAD SUMMARY =====================
@@ -328,14 +325,12 @@ st.subheader("Download Summary")
 if 'site_code' in df.columns:
     summary = df.groupby('site_code').size().reset_index(name='repeat_count')
     summary = summary.sort_values('repeat_count', ascending=False)
-    st.download_button(
-        "📥 Download Site Repeat Summary",
-        data=excel_bytes(
-            summary,
-            title=f"Site Repeat Summary  ·  {isp}",
-            subtitle=period,
-            sheet_name="Summary",
-        ),
-        file_name=f"XTRNATE_Repeat_Summary_{isp}_{period.replace(' ', '_')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    download_pack(
+        "Site Repeat Summary",
+        summary,
+        file_stem=f"XTRNATE_Repeat_Summary_{isp}_{period.replace(' ', '_')}",
+        title=f"Site Repeat Summary  ·  {isp}",
+        subtitle=period,
+        sheet_name="Summary",
+        key="repeat_sum_dl",
     )

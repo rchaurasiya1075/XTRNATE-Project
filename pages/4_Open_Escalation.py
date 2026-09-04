@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.escalation import load_escalation_matrix, apply_escalation_to_open, get_escalation_color
 from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 st.set_page_config(page_title="Open Escalation | XTRNATE", page_icon="🚨", layout="wide")
 
@@ -158,16 +159,14 @@ else:
     a4.metric("3+ in 6M", int((auto["6M downs"] >= 3).sum()))
     st.dataframe(auto, use_container_width=True, height=480)
 
-    st.download_button(
-        "📥 Download ALL open sites history sheet",
-        data=excel_bytes(
-            auto,
-            title=f"Open Sites History  ·  {isp}",
-            subtitle="1M / 3M / 6M downs per open site",
-            sheet_name="Open_Sites_History",
-        ),
-        file_name=f"XTRNATE_OpenSites_History_{isp}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    download_pack(
+        "ALL open sites history",
+        auto,
+        file_stem=f"XTRNATE_OpenSites_History_{isp}",
+        title=f"Open Sites History  ·  {isp}",
+        subtitle="1M / 3M / 6M downs per open site",
+        sheet_name="Open_Sites_History",
+        key="open_sites_hist_dl",
     )
 
 # ===================== SITE HISTORY FOR OPEN TICKETS =====================
@@ -232,16 +231,14 @@ else:
                 st.dataframe(history[hist_cols], use_container_width=True, height=400)
 
                 # Download history
-                st.download_button(
-                    f"📥 Download History of {selected_open_site}",
-                    data=excel_bytes(
-                        history[hist_cols],
-                        title=f"Site History  ·  {selected_open_site}",
-                        subtitle=f"ISP {isp}",
-                        sheet_name="Site_History",
-                    ),
-                    file_name=f"XTRNATE_History_{selected_open_site}_{isp}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                download_pack(
+                    f"History of {selected_open_site}",
+                    history[hist_cols],
+                    file_stem=f"XTRNATE_History_{selected_open_site}_{isp}",
+                    title=f"Site History  ·  {selected_open_site}",
+                    subtitle=f"ISP {isp}",
+                    sheet_name="Site_History",
+                    key=f"open_hist_{selected_open_site}",
                 )
         else:
             st.warning("Closed tickets data nahi hai. Site history ke liye Closed Tickets Excel bhi upload karo.")
@@ -256,13 +253,11 @@ if 'open_hours' in filtered.columns:
     st.plotly_chart(fig, use_container_width=True)
 
 # Download open list
-st.download_button(
-    "📥 Download Current Open Tickets",
-    data=excel_bytes(
-        filtered[display_cols],
-        title=f"Open Tickets  ·  {isp}",
-        sheet_name="Open_Tickets",
-    ),
-    file_name=f"XTRNATE_Open_{isp}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+download_pack(
+    "Current Open Tickets",
+    filtered[display_cols],
+    file_stem=f"XTRNATE_Open_{isp}",
+    title=f"Open Tickets  ·  {isp}",
+    sheet_name="Open_Tickets",
+    key="open_tix_dl",
 )

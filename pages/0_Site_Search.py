@@ -9,6 +9,7 @@ from utils.auto_load import auto_load_tickets
 from utils.site_search import render_site_history_panel
 from utils.bootstrap import ensure_ready
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 st.set_page_config(page_title="Site Search | XTRNATE", page_icon="🔍", layout="wide")
 ensure_ready()
@@ -96,31 +97,14 @@ if q and q.strip():
         filtered_history = closed[closed['site_code'].astype(str).str.upper() == site_code]
         if not filtered_history.empty:
             st.markdown("#### Export Site History")
-            exp_col1, exp_col2, _ = st.columns([1.5, 1.5, 3])
-            
-            # Helper for Excel export
-            excel_data = excel_bytes(
+            download_pack(
+                f"{site_code} History",
                 filtered_history,
+                file_stem=f"Site_History_{site_code}",
                 title=f"Site History  ·  {site_code}",
                 sheet_name="Site_History",
+                key=f"site_hist_{site_code}",
             )
-
-            with exp_col1:
-                st.download_button(
-                    label="📥 Download History (CSV)",
-                    data=filtered_history.to_csv(index=False).encode('utf-8'),
-                    file_name=f"Site_History_{site_code}.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-            with exp_col2:
-                st.download_button(
-                    label="📊 Download History (Excel)",
-                    data=excel_data,
-                    file_name=f"Site_History_{site_code}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
 else:
     st.info("Upar box mein Site Code type karo. Example: `XTNSLN354`")
 

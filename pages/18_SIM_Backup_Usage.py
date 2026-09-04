@@ -12,6 +12,7 @@ from utils.google_sheets import load_sheet_as_csv
 from utils.auto_load import auto_load_tickets
 from utils.data_processing import isp_options, classify_isp
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 SHEET_ID = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
 USAGE_GID = "710549453"
@@ -352,9 +353,11 @@ if pick and pick != "—":
 sim_sheets = {"Site_Usage_Downs": show, "Month_ISP": mon}
 if not split.empty:
     sim_sheets["ISP_Split"] = split
-st.download_button(
-    "📥 Excel — SIM usage + BB downs",
-    data=excel_bytes(sim_sheets, title="SIM Backup Usage", subtitle="Site usage + BB downs"),
-    file_name="XTRNATE_SIM_Backup_Usage.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+download_pack(
+    "SIM usage + BB downs",
+    sim_sheets,
+    file_stem="XTRNATE_SIM_Backup_Usage",
+    title="SIM Backup Usage",
+    subtitle="Site usage + BB downs",
+    key="sim_usage_dl",
 )

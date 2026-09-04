@@ -11,6 +11,7 @@ from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import detect_category, get_summary_stats, isp_options, classify_isp
 from utils.isp_deck import build_isp_pptx
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 st.set_page_config(page_title="ISP Comparison | XTRNATE", page_icon="⚖️", layout="wide")
 st.title("⚖️ ISP Report")
@@ -344,11 +345,6 @@ else:
     if not rep_detail.empty:
         sheets["Repeat_Tickets"] = rep_detail
     sheets["Tickets"] = detail
-    buf_bytes = excel_bytes(
-        sheets,
-        title=f"ISP Report  ·  {partner}",
-        subtitle=f"{start_day} to {end_day}  •  {total} tickets",
-    )
     meta = {
         "isp": partner,
         "from": start_day.strftime("%d %b %Y"),
@@ -366,24 +362,22 @@ else:
         ppt_bytes = None
         st.warning(f"PPT build issue: {e}")
 
-    d1, d2 = st.columns(2)
-    with d1:
+    download_pack(
+        f"{partner} full data",
+        sheets,
+        file_stem=f"XTRNATE_{partner}_{start_day}_to_{end_day}",
+        title=f"ISP Report  ·  {partner}",
+        subtitle=f"{start_day} to {end_day}  •  {total} tickets",
+        key="isp_report_dl",
+    )
+    if ppt_bytes:
         st.download_button(
-            f"📥 Excel — {partner} full data",
-            data=buf_bytes,
-            file_name=f"XTRNATE_{partner}_{start_day}_to_{end_day}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            f"📊 PPT — {partner} review deck",
+            data=ppt_bytes,
+            file_name=f"XTRNATE_{partner}_{start_day}_to_{end_day}.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             use_container_width=True,
         )
-    with d2:
-        if ppt_bytes:
-            st.download_button(
-                f"📊 PPT — {partner} review deck",
-                data=ppt_bytes,
-                file_name=f"XTRNATE_{partner}_{start_day}_to_{end_day}.pptx",
-                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                use_container_width=True,
-            )
 
 st.markdown("---")
 st.subheader("Current open (selected ISP)")

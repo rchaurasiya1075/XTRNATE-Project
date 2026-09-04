@@ -11,6 +11,7 @@ from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import process_closed_tickets, classify_isp, isp_options
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 st.set_page_config(
     page_title="Partner Report | XTRNATE", page_icon="📄", layout="wide"
@@ -628,7 +629,7 @@ if not vc.empty:
     st.dataframe(ticket_view(vc), use_container_width=True, height=280)
 
 
-def to_xlsx():
+def report_sheets():
     sheets = {
         "SLA_Buckets": sla_df,
         "Classification": cls_df,
@@ -643,18 +644,16 @@ def to_xlsx():
         sheets["Repeat_Sites"] = pd.concat(repeat_site_frames, ignore_index=True)
     if repeat_ticket_frames:
         sheets["Repeat_Tickets"] = pd.concat(repeat_ticket_frames, ignore_index=True)
-    return excel_bytes(
-        sheets,
-        title=f"Partner Performance Report  ·  {partner}",
-        subtitle=f"{partner}  •  {period_label}  •  {len(selected)} tickets",
-    )
+    return sheets
 
 
 st.markdown("---")
-st.download_button(
-    f"📥 Download {partner} Full Performance Report (Excel)",
-    data=to_xlsx(),
-    file_name=f"XTRNATE_{partner}_{str(period_label).replace(' ', '_')}_Report.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+download_pack(
+    f"{partner} Full Performance Report",
+    report_sheets(),
+    file_stem=f"XTRNATE_{partner}_{str(period_label).replace(' ', '_')}_Report",
+    title=f"Partner Performance Report  ·  {partner}",
+    subtitle=f"{partner}  •  {period_label}  •  {len(selected)} tickets",
+    key="partner_report_dl",
 )
 

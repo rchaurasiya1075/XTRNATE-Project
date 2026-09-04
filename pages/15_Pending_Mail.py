@@ -12,6 +12,7 @@ from utils.bootstrap import ensure_ready, get_selected_isps, isp_label
 from utils.google_sheets import extract_sheet_id
 from utils.data_processing import classify_isp, isp_options
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 st.set_page_config(page_title="Pending Mail | XTRNATE", page_icon="📧", layout="wide")
 ensure_ready()
@@ -250,19 +251,16 @@ def render_mail(partner, src):
     det = pd.DataFrame(rows)
     st.dataframe(det, use_container_width=True, height=420)
 
-    st.download_button(
-        f"📥 Download {partner} pending mail Excel",
-        data=excel_bytes(
-            {
-                "Reason": pd.DataFrame(reason_tbl, columns=["OUTAGE REASON", brand]),
-                "Location": pd.DataFrame(loc_tbl, columns=["LOCATION", brand]),
-                "Pending": det,
-            },
-            title=f"Pending Mail  ·  {partner}",
-            subtitle=datetime.now().strftime("%d-%b-%Y"),
-        ),
-        file_name=f"OPEN_PENDING_{partner}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    download_pack(
+        f"{partner} pending mail",
+        {
+            "Reason": pd.DataFrame(reason_tbl, columns=["OUTAGE REASON", brand]),
+            "Location": pd.DataFrame(loc_tbl, columns=["LOCATION", brand]),
+            "Pending": det,
+        },
+        file_stem=f"OPEN_PENDING_{partner}_{datetime.now().strftime('%Y%m%d')}",
+        title=f"Pending Mail  ·  {partner}",
+        subtitle=datetime.now().strftime("%d-%b-%Y"),
         key=f"mail_xlsx_{partner}",
     )
     st.download_button(

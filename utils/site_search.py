@@ -1,7 +1,7 @@
 """Shared Site Code history search."""
 import pandas as pd
 import streamlit as st
-from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 def render_site_search_box(key_prefix="global"):
     """Top search bar — returns searched site code or None."""
@@ -93,14 +93,11 @@ def render_site_history_panel(site_code: str):
             cat.columns = ['Category', 'Count']
             st.dataframe(cat, use_container_width=True)
 
-        st.download_button(
-            f"📥 Download {site_code} History",
-            data=excel_bytes(
-                hist[cols],
-                title=f"Site History  ·  {site_code}",
-                sheet_name="History",
-            ),
-            file_name=f"History_{site_code}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"dl_hist_{site_code}"
+        download_pack(
+            f"{site_code} History",
+            hist[cols],
+            file_stem=f"History_{site_code}",
+            title=f"Site History  ·  {site_code}",
+            sheet_name="History",
+            key=f"dl_hist_{site_code}",
         )

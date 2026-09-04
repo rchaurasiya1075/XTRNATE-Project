@@ -11,6 +11,7 @@ from utils.data_processing import filter_by_period, isp_options, classify_isp
 from utils.auto_load import auto_load_tickets
 from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps, isp_label
 from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
 
 st.set_page_config(page_title="Penalty & SLA | XTRNATE", page_icon="📜", layout="wide")
 ensure_ready()
@@ -231,16 +232,13 @@ for i, name in enumerate(isp_names):
         else:
             st.metric(f"Unique sites ({name})", len(sdf))
             st.dataframe(sdf, use_container_width=True, height=420)
-            st.download_button(
-                f"📥 Download {name} Site Summary (Excel)",
-                excel_bytes(
-                    sdf,
-                    title=f"Penalty Site Summary  ·  {name}",
-                    subtitle=period,
-                    sheet_name="Sites",
-                ),
-                file_name=f"Penalty_Sites_{name}_{period.replace(' ', '_')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            download_pack(
+                f"{name} Site Summary",
+                sdf,
+                file_stem=f"Penalty_Sites_{name}_{period.replace(' ', '_')}",
+                title=f"Penalty Site Summary  ·  {name}",
+                subtitle=period,
+                sheet_name="Sites",
                 key=f"sites_dl_{i}_{name}",
             )
 
@@ -263,16 +261,13 @@ with tabs[-1]:
             if sdf is not None and not sdf.empty:
                 penalty_sheets[f"{str(name)[:22]}_Sites"] = sdf
         penalty_sheets["Combined_Sites"] = combined
-        st.download_button(
-            "📊 Download Colorful Formatted Excel Report",
-            data=excel_bytes(
-                penalty_sheets,
-                title="Penalty & SLA Report",
-                subtitle=period,
-            ),
-            file_name=f"XTRNATE_Formatted_Penalty_Report_{period.replace(' ', '_')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
+        download_pack(
+            "Penalty & SLA Report",
+            penalty_sheets,
+            file_stem=f"XTRNATE_Formatted_Penalty_Report_{period.replace(' ', '_')}",
+            title="Penalty & SLA Report",
+            subtitle=period,
+            key="penalty_combined_dl",
         )
 
 st.markdown("---")

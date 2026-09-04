@@ -10,7 +10,8 @@ from utils.data_processing import filter_by_period, get_summary_stats
 from utils.escalation import load_escalation_matrix, apply_escalation_to_open
 from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps
 from utils.site_search import render_site_history_panel
-from utils.excel_export import excel_bytes
+from utils.report_download import download_pack
+from utils.site_pack import render_multi_site_pack
 
 st.set_page_config(page_title="Dashboard | XTRNATE", page_icon="📊", layout="wide")
 
@@ -28,11 +29,13 @@ isp = ensure_ready()
 st.caption(f"Active: **{isp}** • Data auto-loaded")
 
 # Site search on dashboard too
-with st.expander("🔍 Site Code Search", expanded=False):
+with st.expander("🔍 Site Code Search (single site)", expanded=False):
     sq = st.text_input("Site Code", placeholder="XTNNTL358", key="dash_site_q")
     if sq:
         render_site_history_panel(sq.strip().upper())
 
+with st.expander("📋 Multi-site pack — paste many site codes", expanded=True):
+    render_multi_site_pack()
 closed_df = st.session_state.get('closed_df')
 open_df = st.session_state.get('open_df')
 closed_df = apply_isp_filter(closed_df)
@@ -119,11 +122,13 @@ if open_df is not None and not open_df.empty:
     sort_col = 'open_hours' if 'open_hours' in open_with_esc.columns else display_cols[0]
     show = open_with_esc[display_cols].sort_values(sort_col, ascending=False)
     st.dataframe(show, use_container_width=True, height=420)
-    st.download_button(
-        "📥 Download Open Calls",
-        data=excel_bytes(show, title=f"Dashboard Open Calls  ·  {isp}", sheet_name="Open_Calls"),
-        file_name=f"Open_Calls_{isp}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    download_pack(
+        "Open Calls",
+        show,
+        file_stem=f"Open_Calls_{isp}_{datetime.now().strftime('%Y%m%d')}",
+        title=f"Dashboard Open Calls  ·  {isp}",
+        sheet_name="Open_Calls",
+        key="dash_open_dl",
     )
 else:
     st.info("No open tickets right now.")
