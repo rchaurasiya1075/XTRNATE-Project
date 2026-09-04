@@ -648,12 +648,15 @@ def report_sheets():
 
 
 st.markdown("---")
-download_pack(
-    f"{partner} Full Performance Report",
-    report_sheets(),
-    file_stem=f"XTRNATE_{partner}_{str(period_label).replace(' ', '_')}_Report",
-    title=f"Partner Performance Report  ·  {partner}",
-    subtitle=f"{partner}  •  {period_label}  •  {len(selected)} tickets",
-    key="partner_report_dl",
-)
+try:
+    download_pack(
+        f"{partner} Full Performance Report",
+        report_sheets(),
+        file_stem=f"XTRNATE_{partner}_{str(period_label).replace(' ', '_')}_Report",
+        title=f"Partner Performance Report  ·  {partner}",
+        subtitle=f"{partner}  •  {period_label}  •  {len(selected)} tickets",
+        key="partner_report_dl",
+    )
+except Exception:
+    st.caption("Download prepare skip — page data upar same hai.")
 

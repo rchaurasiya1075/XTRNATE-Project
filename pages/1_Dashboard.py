@@ -28,14 +28,14 @@ st.title("📊 Command Dashboard")
 isp = ensure_ready()
 st.caption(f"Active: **{isp}** • Data auto-loaded")
 
-# Site search on dashboard too
-with st.expander("🔍 Site Code Search (single site)", expanded=False):
+st.markdown("### 📋 Multi-site pack")
+st.caption("Kai site codes ek saath paste karo — history + SIM + last mile + LC + circuit ek pack mein.")
+render_multi_site_pack()
+
+with st.expander("🔍 Single site search", expanded=False):
     sq = st.text_input("Site Code", placeholder="XTNNTL358", key="dash_site_q")
     if sq:
         render_site_history_panel(sq.strip().upper())
-
-with st.expander("📋 Multi-site pack — paste many site codes", expanded=True):
-    render_multi_site_pack()
 closed_df = st.session_state.get('closed_df')
 open_df = st.session_state.get('open_df')
 closed_df = apply_isp_filter(closed_df)

@@ -90,8 +90,15 @@ def _prep(df) -> pd.DataFrame:
 
 
 def _is_total_label(val) -> bool:
-    t = str(val or "").strip().lower().replace("_", " ")
-    return t in ("grand total", "total", "grand tot")
+    try:
+        if val is None:
+            return False
+        if type(val).__name__ in ("NAType", "NaTType"):
+            return False
+        t = str(val).strip().lower().replace("_", " ")
+    except Exception:
+        return False
+    return t in ("grand total", "total", "grand tot", "total / average")
 
 
 def _col_tone(col_name: str) -> str | None:

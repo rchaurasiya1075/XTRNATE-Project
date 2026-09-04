@@ -2,6 +2,7 @@ import streamlit as st
 from utils.auto_load import auto_load_tickets
 from utils.site_search import render_site_history_panel
 from utils.bootstrap import show_last_update, render_isp_multiselect, isp_label, apply_isp_filter
+from utils.site_pack import render_multi_site_pack
 
 if "selected_isp" not in st.session_state:
     st.session_state.selected_isp = "ALL"
@@ -48,6 +49,11 @@ st.markdown("</div>", unsafe_allow_html=True)
 if site_q and (search_btn or site_q):
     render_site_history_panel(site_q.strip().upper())
     st.markdown("---")
+
+st.markdown("### 📋 Multi-site pack")
+st.caption("Kai site codes ek saath paste — SIM, last mile, LC, circuit, full history. Excel + PDF.")
+render_multi_site_pack()
+st.markdown("---")
 
 st.markdown("### ISP / Partner filter")
 st.caption("Ek se zyada ISP tick karo — sirf selected ka data har page pe dikhega. Naya ISP sheet mein aaya to list mein auto add.")

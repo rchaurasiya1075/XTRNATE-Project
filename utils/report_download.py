@@ -1,4 +1,4 @@
-"""Excel + PDF download buttons — same data, professional format."""
+"""Excel + PDF download buttons. Never crash the page."""
 import re
 
 import streamlit as st
@@ -25,26 +25,33 @@ def download_pack(
     sheet_name="Report",
     key="dl",
 ):
-    """Two buttons: Excel and PDF. PDF fail ho to page crash nahi."""
     stem = _stem(file_stem)
-    xls = excel_bytes(data, title=title, subtitle=subtitle, sheet_name=sheet_name)
+    xls = b""
     pdf = b""
     try:
-        pdf = pdf_bytes(data, title=title, subtitle=subtitle, sheet_name=sheet_name)
-        if not pdf or not pdf.startswith(b"%PDF"):
+        xls = excel_bytes(data, title=title, subtitle=subtitle, sheet_name=sheet_name) or b""
+    except Exception:
+        xls = b""
+    try:
+        pdf = pdf_bytes(data, title=title, subtitle=subtitle, sheet_name=sheet_name) or b""
+        if pdf and not pdf.startswith(b"%PDF"):
             pdf = b""
     except Exception:
         pdf = b""
+
     c1, c2 = st.columns(2)
     with c1:
-        st.download_button(
-            f"📥 {label} — Excel",
-            data=xls,
-            file_name=f"{stem}.xlsx",
-            mime=XLSX,
-            key=f"{key}_xlsx",
-            use_container_width=True,
-        )
+        if xls:
+            st.download_button(
+                f"📥 {label} — Excel",
+                data=xls,
+                file_name=f"{stem}.xlsx",
+                mime=XLSX,
+                key=f"{key}_xlsx",
+                use_container_width=True,
+            )
+        else:
+            st.caption("Excel skip")
     with c2:
         if pdf:
             st.download_button(
@@ -56,4 +63,4 @@ def download_pack(
                 use_container_width=True,
             )
         else:
-            st.caption("PDF is sheet pe skip")
+            st.caption("PDF skip")
