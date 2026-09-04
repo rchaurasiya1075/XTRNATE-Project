@@ -1,4 +1,4 @@
-"""XTRNATE branded Excel export — navy headers, borders, zebra, totals, freeze."""
+"""XTRNATE Excel export — forest-green professional tables (print-ready)."""
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -10,23 +10,24 @@ import pandas as pd
 
 IST = ZoneInfo("Asia/Kolkata")
 
-NAVY = "#0B1F3A"
-GOLD = "#B8860B"
-SKY = "#0B1F3A"
-CYAN = "#E8D5A3"
+# Forest green (attrition-report style)
+NAVY = "#1F513F"
+GOLD = "#2D6A4F"
+SKY = "#1F513F"
+CYAN = "#D8EDE4"
 WHITE = "#FFFFFF"
-INK = "#1C1917"
-MUTED = "#78716C"
-ALT = "#F6F3EE"
+INK = "#1A1A1A"
+MUTED = "#6B7280"
+ALT = "#F0F4F2"
 ROW = "#FFFFFF"
-BORDER = "#D6D3D1"
-GREEN_BG, GREEN_FG = "#ECFDF3", "#166534"
-YELLOW_BG, YELLOW_FG = "#FFFBEB", "#92400E"
-RED_BG, RED_FG = "#FEF2F2", "#9F1239"
-TOTAL_BG, TOTAL_FG = "#0B1F3A", "#F5E6C8"
-TITLE_SUB_BG = "#132A4A"
+BORDER = "#C9D4CE"
+GREEN_BG, GREEN_FG = "#E8F5EE", "#1F513F"
+YELLOW_BG, YELLOW_FG = "#FFF8E7", "#92400E"
+RED_BG, RED_FG = "#FDECEC", "#9F1239"
+TOTAL_BG, TOTAL_FG = "#1F513F", "#FFFFFF"
+TITLE_SUB_BG = "#163D30"
 
-TAB_COLORS = ["0B1F3A", "B8860B", "1E3A5F", "3F3F46", "0F766E", "9A3412"]
+TAB_COLORS = ["1F513F", "2D6A4F", "14532D", "3F5E56", "0F766E", "365314"]
 
 WRAP_HINTS = (
     "reason", "root_cause", "problem_reported", "final_action", "explanation",
@@ -173,9 +174,9 @@ def _formats(wb):
         "gold": wb.add_format({"bg_color": GOLD}),
         "sub": wb.add_format({
             "font_name": "Calibri", "font_size": 9,
-            "font_color": "#E8D5A3", "bg_color": TITLE_SUB_BG, "align": "left", "valign": "vcenter",
+            "font_color": "#D8EDE4", "bg_color": TITLE_SUB_BG, "align": "left", "valign": "vcenter",
         }),
-        "header": f(bold=True, font_color=WHITE, bg_color=NAVY, align="center", font_size=10),
+        "header": f(bold=True, font_color=WHITE, bg_color=NAVY, align="center", font_size=10, text_wrap=True),
         "cell": f(font_color=INK, bg_color=ROW, align="left", font_size=10),
         "cell_alt": f(font_color=INK, bg_color=ALT, align="left", font_size=10),
         "cell_c": f(font_color=INK, bg_color=ROW, align="center", font_size=10),
@@ -198,7 +199,7 @@ def _formats(wb):
         "yellow": f(bold=True, font_color=YELLOW_FG, bg_color=YELLOW_BG, align="center"),
         "red": f(bold=True, font_color=RED_FG, bg_color=RED_BG, align="center"),
         "kpi_l": f(bold=True, font_color="#44403C", bg_color="#F6F3EE", align="left"),
-        "kpi_v": f(bold=True, font_color=NAVY, bg_color="#F5E6C8", align="center", font_size=12),
+        "kpi_v": f(bold=True, font_color=NAVY, bg_color="#E8F5EE", align="center", font_size=12),
     }
 
 
@@ -278,7 +279,7 @@ def write_sheet(writer, df, sheet_name, *, title="", subtitle="", tab_color=None
     _merge_or_write(2, sub, fmt["sub"])
 
     header_row = 3
-    ws.set_row(header_row, 24)
+    ws.set_row(header_row, 32)
     for c, name in enumerate(cols):
         ws.write(header_row, c, str(name), fmt["header"])
         ws.set_column(c, c, _col_width(name, data[name] if name in data.columns else pd.Series(dtype=object)))

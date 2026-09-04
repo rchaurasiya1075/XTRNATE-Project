@@ -25,10 +25,16 @@ def download_pack(
     sheet_name="Report",
     key="dl",
 ):
-    """Two buttons: Excel and PDF. Does not change page data."""
+    """Two buttons: Excel and PDF. PDF fail ho to page crash nahi."""
     stem = _stem(file_stem)
     xls = excel_bytes(data, title=title, subtitle=subtitle, sheet_name=sheet_name)
-    pdf = pdf_bytes(data, title=title, subtitle=subtitle, sheet_name=sheet_name)
+    pdf = b""
+    try:
+        pdf = pdf_bytes(data, title=title, subtitle=subtitle, sheet_name=sheet_name)
+        if not pdf or not pdf.startswith(b"%PDF"):
+            pdf = b""
+    except Exception:
+        pdf = b""
     c1, c2 = st.columns(2)
     with c1:
         st.download_button(
@@ -40,11 +46,14 @@ def download_pack(
             use_container_width=True,
         )
     with c2:
-        st.download_button(
-            f"📄 {label} — PDF",
-            data=pdf,
-            file_name=f"{stem}.pdf",
-            mime=PDF,
-            key=f"{key}_pdf",
-            use_container_width=True,
-        )
+        if pdf:
+            st.download_button(
+                f"📄 {label} — PDF",
+                data=pdf,
+                file_name=f"{stem}.pdf",
+                mime=PDF,
+                key=f"{key}_pdf",
+                use_container_width=True,
+            )
+        else:
+            st.caption("PDF is sheet pe skip")

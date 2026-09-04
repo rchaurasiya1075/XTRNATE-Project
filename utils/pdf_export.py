@@ -1,4 +1,4 @@
-"""Professional PDF export — navy / gold, print-ready tables."""
+"""Professional PDF export — forest-green print-ready tables."""
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -9,12 +9,13 @@ import pandas as pd
 from fpdf import FPDF
 
 IST = ZoneInfo("Asia/Kolkata")
-NAVY = (11, 31, 58)
-GOLD = (184, 134, 11)
-INK = (28, 25, 23)
-ALT = (246, 243, 238)
-MUTED = (120, 113, 108)
+NAVY = (31, 81, 63)       # #1F513F
+GOLD = (45, 106, 79)      # #2D6A4F
+INK = (26, 26, 26)
+ALT = (240, 244, 242)
+MUTED = (107, 114, 128)
 WHITE = (255, 255, 255)
+SUB = (216, 237, 228)
 
 
 def _txt(val) -> str:
@@ -26,9 +27,15 @@ def _txt(val) -> str:
     except Exception:
         pass
     if isinstance(val, pd.Timestamp):
-        if pd.isna(val):
-            return ""
-        return val.strftime("%d-%b-%Y %H:%M")
+        try:
+            if pd.isna(val):
+                return ""
+        except Exception:
+            pass
+        try:
+            return val.strftime("%d-%b-%Y %H:%M")
+        except Exception:
+            return str(val)[:40]
     if isinstance(val, datetime):
         return val.strftime("%d-%b-%Y %H:%M")
     if isinstance(val, date) and not isinstance(val, datetime):
@@ -37,8 +44,10 @@ def _txt(val) -> str:
         if val == int(val):
             return f"{int(val):,}"
         return f"{val:,.2f}"
+    if isinstance(val, (list, tuple, dict, set)):
+        return str(val)[:80]
     s = str(val).replace("\n", " ").strip()
-    if s.lower() in ("nan", "none", "nat", "<na>"):
+    if s.lower() in ("nan", "none", "nat", "<na>", "<nat>"):
         return ""
     return s.encode("latin-1", "replace").decode("latin-1")
 
@@ -52,7 +61,23 @@ def _prep(df) -> pd.DataFrame:
         df = pd.DataFrame(df)
     out = df.copy()
     out.columns = [str(c) for c in out.columns]
-    return out.loc[:, ~out.columns.duplicated()].reset_index(drop=True)
+    out = out.loc[:, ~out.columns.duplicated()].reset_index(drop=True)
+    # Drop Arrow dtypes so len()/str never crash
+    try:
+        out = out.convert_dtypes(dtype_backend="numpy")
+    except Exception:
+        pass
+    safe = pd.DataFrame()
+    for c in out.columns:
+        vals = []
+        try:
+            raw = out[c].tolist()
+        except Exception:
+            raw = list(out[c].astype(object).fillna(""))
+        for v in raw:
+            vals.append(_txt(v))
+        safe[str(c)] = vals
+    return safe
 
 
 class ReportPDF(FPDF):
@@ -74,7 +99,7 @@ class ReportPDF(FPDF):
         self.set_xy(10, 3.2)
         self.cell(self.w - 20, 6, self.report_title, align="L")
         self.set_font("Helvetica", "", 8)
-        self.set_text_color(232, 213, 163)
+        self.set_text_color(*SUB)
         self.set_xy(10, 9.5)
         self.cell(self.w - 20, 5, self.report_sub, align="L")
         self.set_y(22)
@@ -94,16 +119,23 @@ def _col_widths(pdf: FPDF, cols, data: pd.DataFrame):
     n = max(len(cols), 1)
     weights = []
     for c in cols:
-        sample = data[c].astype(str).head(40).map(len) if c in data.columns and not data.empty else pd.Series([0])
-        w = max(len(str(c)), int(sample.max() if len(sample) else 0), 6)
+        w = len(str(c))
+        if c in data.columns and not data.empty:
+            try:
+                for v in data[c].head(40).tolist():
+                    try:
+                        w = max(w, len(str(v or "")))
+                    except Exception:
+                        continue
+            except Exception:
+                pass
         if any(k in str(c).lower() for k in ("reason", "remark", "address", "comment")):
             w = max(w, 28)
-        weights.append(min(w, 40))
+        weights.append(min(max(w, 6), 40))
     total = sum(weights) or 1
     widths = [usable * w / total for w in weights]
-    # floor so tiny cols stay readable
     widths = [max(w, 14) if n <= 10 else max(w, 11) for w in widths]
-    scale = usable / sum(widths)
+    scale = usable / (sum(widths) or 1)
     return [w * scale for w in widths]
 
 
@@ -115,7 +147,6 @@ def _draw_table(pdf: FPDF, df: pd.DataFrame, section: str):
         pdf.set_text_color(*MUTED)
         pdf.cell(0, 8, "No columns")
         return
-    # too many columns → keep first 12
     if len(cols) > 12:
         cols = cols[:12]
         data = data[cols]
@@ -148,7 +179,8 @@ def _draw_table(pdf: FPDF, df: pd.DataFrame, section: str):
         pdf.cell(0, 8, "No rows")
         return
 
-    for i, row in data.iterrows():
+    records = data.to_dict("records")
+    for i, rec in enumerate(records):
         if pdf.get_y() > pdf.h - 20:
             pdf.add_page()
             pdf.set_font("Helvetica", "B", 11)
@@ -158,22 +190,22 @@ def _draw_table(pdf: FPDF, df: pd.DataFrame, section: str):
             header_row()
             pdf.set_font("Helvetica", "", 7)
             pdf.set_text_color(*INK)
-        fill = i % 2 == 1
-        if fill:
-            pdf.set_fill_color(*ALT)
-        else:
-            pdf.set_fill_color(*WHITE)
-        first = _txt(row.iloc[0]).strip().lower()
-        is_tot = first in ("grand total", "total")
+        first = _txt(rec.get(cols[0], "")).strip().lower()
+        is_tot = first in ("grand total", "total", "total / average")
         if is_tot:
             pdf.set_fill_color(*NAVY)
             pdf.set_text_color(*WHITE)
             pdf.set_font("Helvetica", "B", 7)
+        elif i % 2 == 1:
+            pdf.set_fill_color(*ALT)
+            pdf.set_text_color(*INK)
+        else:
+            pdf.set_fill_color(*WHITE)
+            pdf.set_text_color(*INK)
         x = pdf.l_margin
         y = pdf.get_y()
-        # compute row height from longest wrap — keep single line for speed
         for w, name in zip(widths, cols):
-            val = _txt(row[name])
+            val = _txt(rec.get(name, ""))
             if len(val) > 48:
                 val = val[:47] + "..."
             align = "L" if name == cols[0] else "C"
@@ -182,8 +214,8 @@ def _draw_table(pdf: FPDF, df: pd.DataFrame, section: str):
             x += w
         pdf.set_y(y + row_h)
         if is_tot:
-            pdf.set_text_color(*INK)
             pdf.set_font("Helvetica", "", 7)
+            pdf.set_text_color(*INK)
 
 
 def pdf_bytes(sheets, *, title="XTRNATE Report", subtitle="", sheet_name="Report"):
@@ -206,13 +238,17 @@ def pdf_bytes(sheets, *, title="XTRNATE Report", subtitle="", sheet_name="Report
     stamp = datetime.now(IST).strftime("%d-%b-%Y %I:%M %p IST")
     sub = f"{subtitle}  •  {stamp}" if subtitle else f"XTRNATE NOC  •  {stamp}"
     pdf = ReportPDF(title, sub)
-    for i, (name, df) in enumerate(clean):
+    for name, df in clean:
         pdf.add_page()
-        _draw_table(pdf, df, name)
-    out = BytesIO()
+        try:
+            _draw_table(pdf, df, name)
+        except Exception:
+            pdf.set_font("Helvetica", "I", 10)
+            pdf.set_text_color(*MUTED)
+            pdf.cell(0, 8, "This sheet could not be drawn.")
     raw = pdf.output()
     if isinstance(raw, (bytes, bytearray)):
-        out.write(bytes(raw))
-    else:
-        pdf.output(out)
+        return bytes(raw)
+    out = BytesIO()
+    pdf.output(out)
     return out.getvalue()

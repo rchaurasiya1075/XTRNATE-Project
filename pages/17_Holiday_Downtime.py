@@ -117,8 +117,8 @@ with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
     ).to_excel(writer, index=False, sheet_name="Holiday_Calendar")
     wb = writer.book
     ws = writer.sheets["Adjusted_DT"]
-    title = wb.add_format({"bold": True, "font_size": 16, "font_color": "white", "bg_color": "#0B1F3A", "align": "left", "font_name": "Calibri"})
-    header = wb.add_format({"bold": True, "font_color": "white", "bg_color": "#0B1F3A", "border": 1, "align": "center", "text_wrap": True, "font_name": "Calibri"})
+    title = wb.add_format({"bold": True, "font_size": 16, "font_color": "white", "bg_color": "#1F513F", "align": "left", "font_name": "Calibri"})
+    header = wb.add_format({"bold": True, "font_color": "white", "bg_color": "#1F513F", "border": 1, "align": "center", "text_wrap": True, "font_name": "Calibri"})
     even = wb.add_format({"bg_color": "#E8F1FA", "border": 1, "text_wrap": True, "valign": "top"})
     odd = wb.add_format({"bg_color": "#FFFFFF", "border": 1, "text_wrap": True, "valign": "top"})
     red = wb.add_format({"bg_color": "#FECACA", "border": 1, "bold": True})

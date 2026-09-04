@@ -476,7 +476,7 @@ def to_excel():
 
         # Excel Dark/Modern Formats
         header_fmt = workbook.add_format({
-            "bg_color": "#0B1F3A",
+            "bg_color": "#1F513F",
             "font_color": "#F8FAFC",
             "bold": True,
             "align": "center",
@@ -500,13 +500,13 @@ def to_excel():
         })
 
         total_row_fmt = workbook.add_format({
-            "bg_color": "#1E293B",
-            "font_color": "#F5E6C8",
+            "bg_color": "#1F513F",
+            "font_color": "#FFFFFF",
             "bold": True,
             "align": "center",
             "valign": "vcenter",
             "border": 1,
-            "border_color": "#0F172A",
+            "border_color": "#C9D4CE",
             "font_name": "Calibri",
             "font_size": 10,
         })
