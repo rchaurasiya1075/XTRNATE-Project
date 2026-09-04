@@ -309,6 +309,121 @@ def _appear_shapes(slide, skip=2):
     sld.append(timing)
 
 
+def _pct(part, whole):
+    try:
+        if not whole:
+            return 0
+        return round(100.0 * float(part) / float(whole), 1)
+    except Exception:
+        return 0
+
+
+def _insights_daily(names, vals):
+    if not vals:
+        return ["Is period mein daily ticket series nahi mili.", "Date column check karke dubara export karo."]
+    total = sum(vals)
+    avg = total / len(vals)
+    mx = max(vals)
+    mn = min(vals)
+    peak = names[vals.index(mx)] if names else "—"
+    low = names[vals.index(mn)] if names else "—"
+    first = sum(vals[: max(1, len(vals) // 3)])
+    last = sum(vals[-max(1, len(vals) // 3) :])
+    trend = "up" if last > first * 1.08 else ("down" if last < first * 0.92 else "flat")
+    lines = [
+        f"Period tickets: {int(total):,}  •  daily avg {avg:.1f}.",
+        f"Peak day {peak} ({int(mx)}). Quietest {low} ({int(mn)}).",
+    ]
+    if trend == "up":
+        lines.append("Trend UP — last third days pe load badha. Capacity / vendor backlog check.")
+    elif trend == "down":
+        lines.append("Trend DOWN — last third days pe tickets kam. Stabilisation dikh rahi hai.")
+    else:
+        lines.append("Trend FLAT — volume steady. Repeat sites pe nazar rakho.")
+    if mx >= avg * 2 and avg > 0:
+        lines.append("Peak 2× average se upar — spike ka root cause (fibre / node) alag se note karo.")
+    lines.append("Graph play: line left→right draw hoti hai = din-by-din load.")
+    return lines[:5]
+
+
+def _insights_bars(names, vals, kind="class"):
+    if not vals or not names:
+        return ["Is cut pe data nahi. Filter / sheet check karo."]
+    total = sum(vals) or 1
+    order = sorted(zip(names, vals), key=lambda x: -x[1])
+    top_n, top_v = order[0]
+    share = _pct(top_v, total)
+    lines = [f"Total in this view: {int(total):,} tickets."]
+    lines.append(f"No.1 = {top_n}  ({int(top_v)}, {share}%).")
+    if len(order) > 1:
+        n2, v2 = order[1]
+        lines.append(f"No.2 = {n2}  ({int(v2)}, {_pct(v2, total)}%).")
+    top3 = _pct(sum(v for _, v in order[:3]), total)
+    if kind == "class":
+        lines.append(f"Top 3 classes = {top3}% of mix. Inhi pe restoration SOP tight karo.")
+        if "fibre" in top_n.lower() or "fiber" in top_n.lower():
+            lines.append("Fibre lead hai — route / MC / last-mile partner ko meeting agenda.")
+        elif "vendor" in top_n.lower():
+            lines.append("Vendor change lead — cutover window + LC update track karo.")
+        elif "power" in top_n.lower():
+            lines.append("Power lead — node UPS / feeder partner escalate.")
+        else:
+            lines.append("Lead class ko owner + TAT ke saath close karo.")
+    elif kind == "state":
+        lines.append(f"Top 3 states = {top3}% tickets. Field team yahin concentrate.")
+        lines.append("High-count state mein repeat sites alag se nikaalo.")
+    elif kind == "site":
+        lines.append("Yeh chronic / hotspot sites hain — 3M/6M repeat ke saath padho.")
+        lines.append("Top site pe last-mile + SIM backup status meeting mein confirm.")
+    elif kind == "sla":
+        lines.append("Green buckets = on-track. Long buckets = penalty risk.")
+        lines.append(">24h share kam karna hi partner ask hona chahiye.")
+    lines.append("Graph play: bars 0 se full height tak grow karte hain.")
+    return lines[:6]
+
+
+def _insights_exec(isp, rng, kpis, class_names, class_vals, daily_vals, state_names, state_vals):
+    lines = [f"{isp}  •  {rng or 'selected period'}."]
+    if kpis:
+        bits = [f"{a}: {b}" for a, b in kpis[:4]]
+        lines.append("  •  ".join(str(x) for x in bits))
+    if class_names and class_vals:
+        top = class_names[class_vals.index(max(class_vals))]
+        lines.append(f"Dominant outage: {top} ({_pct(max(class_vals), sum(class_vals))}%).")
+    if daily_vals:
+        avg = sum(daily_vals) / len(daily_vals)
+        lines.append(f"Daily load avg {avg:.1f} tickets (max {int(max(daily_vals))}).")
+    if state_names and state_vals:
+        st = state_names[state_vals.index(max(state_vals))]
+        lines.append(f"Hottest state: {st}.")
+    lines.append("Agle slides: animated graph + uski reading (visualization explain).")
+    lines.append("Meeting use: F5 Slideshow, har graph ke right panel pe talking points.")
+    return lines[:7]
+
+
+def _panel(slide, l, t, w, h, title, lines):
+    _rect(slide, l, t, w, h, GREEN2)
+    _rect(slide, l, t, 0.08, h, GOLD)
+    _tb(slide, l + 0.18, t + 0.12, w - 0.3, 0.4, title, 14, True, GOLD)
+    body = "\n".join(f"•  {x}" for x in lines)
+    _tb(slide, l + 0.18, t + 0.58, w - 0.32, h - 0.75, body, 13, False, WHITE)
+
+
+def _viz_slide(prs, blank, title, gif, names, vals, kind, chart_kind="bar"):
+    s = prs.slides.add_slide(blank)
+    _header(s, title)
+    if gif:
+        _add_gif(s, gif, 0.25, 1.05, 8.5, 5.85)
+    elif names and vals:
+        _add_chart(s, chart_kind, names[:14], vals[:14], "Value", 0.25, 1.1, 8.5, 5.7)
+    else:
+        _tb(s, 0.5, 3.0, 8, 0.4, "No series for this graph.", 16, False, INK)
+    explain = _insights_bars(names, vals, kind=kind) if kind != "daily" else _insights_daily(names, vals)
+    _panel(s, 8.9, 1.1, 4.15, 5.8, "How to read / explain", explain)
+    _fade_transition(s)
+    return s
+
+
 def build_animated_pptx(
     *,
     isp="ISP",
@@ -331,7 +446,7 @@ def build_animated_pptx(
     _rect(s, 0, 0, 0.16, 7.5, GOLD)
     _tb(s, 0.7, 1.7, 12, 0.35, "XTRNATE  •  ANIMATED PERFORMANCE DECK", 14, True, GOLD)
     _tb(s, 0.7, 2.2, 12, 1.0, f"{isp}", 36, True, WHITE)
-    _tb(s, 0.7, 3.3, 12, 0.45, "Animated graphs  •  open with Slideshow (F5)", 18, False, MUTED)
+    _tb(s, 0.7, 3.3, 12, 0.45, "Animated graphs  +  visualization explain  •  F5 Slideshow", 16, False, MUTED)
     _tb(s, 0.7, 3.85, 12, 0.4, rng, 16, False, WHITE)
     _tb(s, 0.7, 6.5, 12, 0.3, "Confidential  |  Partner review", 12, False, MUTED)
     _fade_transition(s)
@@ -347,11 +462,10 @@ def build_animated_pptx(
         _rect(s, left, 1.4, 2.4, 1.7, colors[i % len(colors)])
         _tb(s, left + 0.08, 1.52, 2.24, 0.35, str(lab), 11, True, MUTED, PP_ALIGN.CENTER)
         _tb(s, left + 0.08, 1.95, 2.24, 0.8, str(val), 26, True, WHITE, PP_ALIGN.CENTER)
-    _tb(s, 0.5, 3.5, 12, 0.4, "F5 dabao — cards fade-in. Next slides pe graphs grow.", 14, False, INK)
+    _tb(s, 0.5, 3.45, 12.4, 0.4, "F5 — cards fade. Agli slides pe graph + right side pe explain / report.", 14, False, INK)
     _fade_transition(s)
     _appear_shapes(s, skip=1)
 
-    # Daily GIF + native chart
     d_names, d_vals = [], []
     if daily_df is not None and not daily_df.empty:
         cols = list(daily_df.columns)
@@ -368,88 +482,87 @@ def build_animated_pptx(
         tmp["_v"] = pd.to_numeric(tmp[val_c], errors="coerce").fillna(0)
         d_names = tmp["_d"].tolist()
         d_vals = tmp["_v"].astype(float).tolist()
+    c_names, c_vals = _series(
+        class_df,
+        class_df.columns[0] if class_df is not None and len(class_df.columns) else "c",
+        "Count",
+    )
+    st_names, st_vals = _series(
+        state_df,
+        state_df.columns[0] if state_df is not None and len(getattr(state_df, "columns", [])) else "State",
+        "Count",
+    )
+
+    # Rewrite exec panel with full data — extra summary slide
     s = prs.slides.add_slide(blank)
-    _header(s, "Daily tickets  •  animated")
+    _header(s, f"{isp}  |  Executive visualization report")
+    _panel(s, 0.35, 1.1, 12.6, 5.9, "What this deck shows", _insights_exec(
+        isp, rng, cards, c_names, c_vals, d_vals, st_names, st_vals
+    ))
+    _fade_transition(s)
+
     gif = _gif_line(d_names, d_vals, "Daily ticket count")
-    if gif:
-        _add_gif(s, gif, 0.35, 1.05, 12.6, 5.9)
-    else:
-        _add_chart(s, "line", d_names[-18:], d_vals[-18:], "Tickets", 0.4, 1.15, 12.5, 5.7)
-        _tb(s, 0.5, 6.9, 12, 0.3, "GIF skip — native chart (edit animation in PowerPoint).", 11, False, INK)
-    _fade_transition(s)
+    _viz_slide(prs, blank, "Daily tickets  •  animated line", gif, d_names, d_vals, "daily", "line")
 
-    # Classification bars
-    c_names, c_vals = _series(class_df, class_df.columns[0] if class_df is not None and len(class_df.columns) else "c", "Count")
-    s = prs.slides.add_slide(blank)
-    _header(s, "Outage classification  •  bars grow")
     gif = _gif_bars(c_names, c_vals, "Tickets by outage class")
-    if gif:
-        _add_gif(s, gif, 0.35, 1.05, 12.6, 5.9)
-    else:
-        _add_chart(s, "bar", c_names, c_vals, "Tickets", 0.4, 1.15, 12.5, 5.7)
-    _fade_transition(s)
+    _viz_slide(prs, blank, "Outage classification  •  bars grow", gif, c_names, c_vals, "class", "bar")
 
-    # State
-    st_names, st_vals = _series(state_df, state_df.columns[0] if state_df is not None and len(getattr(state_df, "columns", [])) else "State", "Count")
-    s = prs.slides.add_slide(blank)
-    _header(s, "State-wise outage  •  bars grow")
     gif = _gif_bars(st_names, st_vals, "Tickets by state")
-    if gif:
-        _add_gif(s, gif, 0.35, 1.05, 12.6, 5.9)
-    else:
-        _add_chart(s, "bar", st_names, st_vals, "Tickets", 0.4, 1.15, 12.5, 5.7)
-    _fade_transition(s)
+    _viz_slide(prs, blank, "State-wise outage  •  bars grow", gif, st_names, st_vals, "state", "bar")
 
     # SLA
     if sla_df is not None and not sla_df.empty:
-        s = prs.slides.add_slide(blank)
-        _header(s, "SLA buckets")
-        # pick first numeric data row as categories from columns except first
-        cols = [c for c in sla_df.columns if str(c).lower() not in ("month", "sla bucket", "band")]
-        if "Grand Total" in list(sla_df.iloc[:, 0].astype(str)) or "TOTAL" in list(sla_df.iloc[:, 0].astype(str).str.upper()):
+        names, vals = [], []
+        labels0 = list(sla_df.iloc[:, 0].astype(str))
+        if any(x.upper() in ("GRAND TOTAL", "TOTAL") for x in labels0):
             row = sla_df.iloc[-1]
-            names, vals = [], []
             for c in sla_df.columns[1:]:
                 v = pd.to_numeric(row[c], errors="coerce")
                 if pd.notna(v):
                     names.append(str(c)[:18])
                     vals.append(float(v))
-            gif = _gif_bars(names[:8], vals[:8], "SLA mix (total)")
-            if gif:
-                _add_gif(s, gif, 0.35, 1.05, 12.6, 5.9)
-            else:
-                _add_chart(s, "bar", names[:8], vals[:8], "Tickets", 0.4, 1.15, 12.5, 5.7)
         else:
             names, vals = _series(sla_df, sla_df.columns[0], sla_df.columns[1] if len(sla_df.columns) > 1 else sla_df.columns[0])
-            gif = _gif_bars(names, vals, "SLA")
-            if gif:
-                _add_gif(s, gif, 0.35, 1.05, 12.6, 5.9)
-        _fade_transition(s)
+        gif = _gif_bars(names[:8], vals[:8], "SLA mix")
+        _viz_slide(prs, blank, "SLA buckets  •  bars grow", gif, names, vals, "sla", "bar")
 
     # Native editable charts slide
     s = prs.slides.add_slide(blank)
-    _header(s, "Editable PowerPoint charts  (right-click → Animate)")
-    _add_chart(s, "bar", c_names[:8], c_vals[:8], "Class", 0.35, 1.1, 6.2, 5.6)
-    _add_chart(s, "line", d_names[-14:], d_vals[-14:], "Daily", 6.8, 1.1, 6.1, 5.6)
+    _header(s, "Side-by-side visualization  (editable charts)")
+    _add_chart(s, "bar", c_names[:8], c_vals[:8], "Class", 0.3, 1.05, 6.3, 4.3)
+    _add_chart(s, "line", d_names[-14:], d_vals[-14:], "Daily", 6.8, 1.05, 6.15, 4.3)
+    _panel(
+        s, 0.3, 5.5, 12.7, 1.7,
+        "Read together",
+        [
+            "Left = mix (kahan problem hai). Right = time (kab spike aaya).",
+            "Agar spike + fibre same week hon = last-mile incident, sirf volume nahi.",
+            "PowerPoint mein chart pe right-click → Animate for extra build.",
+        ],
+    )
     _fade_transition(s)
     _appear_shapes(s, skip=1)
 
-    # Sites table-ish chart
+    # Sites
     if site_df is not None and not site_df.empty:
-        s = prs.slides.add_slide(blank)
-        _header(s, "Top sites")
         sn, sv = _series(site_df, site_df.columns[0], site_df.columns[1] if len(site_df.columns) > 1 else site_df.columns[0], n=10)
         gif = _gif_bars(sn, sv, "Top sites by tickets")
-        if gif:
-            _add_gif(s, gif, 0.35, 1.05, 12.6, 5.9)
-        else:
-            _add_chart(s, "bar", sn, sv, "Tickets", 0.4, 1.15, 12.5, 5.7)
-        _fade_transition(s)
+        _viz_slide(prs, blank, "Top sites  •  bars grow", gif, sn, sv, "site", "bar")
 
     s = prs.slides.add_slide(blank)
     _rect(s, 0, 0, 13.333, 7.5, GREEN2)
-    _tb(s, 0.7, 2.4, 12, 0.5, "Play in PowerPoint  →  Slide Show  →  From Beginning (F5)", 22, True, WHITE)
-    _tb(s, 0.7, 3.2, 12, 0.8, "GIF slides auto-play the graph. KPI + chart slides fade in.\nCharts slide ko PowerPoint mein extra animation de sakte ho.", 16, False, MUTED)
+    _tb(s, 0.7, 1.8, 12, 0.45, "Close / partner ask", 14, True, GOLD)
+    _tb(s, 0.7, 2.3, 12, 0.6, f"{isp}  —  actions from this visualization", 26, True, WHITE)
+    actions = []
+    if c_names and c_vals:
+        actions.append(f"1. Own the lead class: {c_names[c_vals.index(max(c_vals))]}.")
+    if st_names and st_vals:
+        actions.append(f"2. Field push in {st_names[st_vals.index(max(st_vals))]}.")
+    if d_vals:
+        actions.append("3. Spike days ka RCA + repeat site list next review tak.")
+    actions.append("4. SLA >24h tickets ko named owner + daily follow-up.")
+    _tb(s, 0.7, 3.2, 12, 2.4, "\n".join(actions or ["Data ke hisaab se next review pe actions lock karo."]), 18, False, WHITE)
+    _tb(s, 0.7, 6.5, 12, 0.3, "F5 Slideshow  •  Confidential  |  XTRNATE NOC", 12, False, MUTED)
     _fade_transition(s)
 
     out = BytesIO()
