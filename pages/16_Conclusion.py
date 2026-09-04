@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import detect_category, get_summary_stats, isp_options, classify_isp
 from utils.meeting_deck import build_meeting_pptx
+from utils.anim_deck import build_animated_pptx
 from utils.remark_tags import apply_tags, dt_hrs
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
@@ -302,3 +303,34 @@ try:
     )
 except Exception as e:
     st.error(f"PPT: {e}")
+
+try:
+    daily_anim = pd.DataFrame()
+    if "submitted_time" in view.columns:
+        tmp = view.copy()
+        tmp["Date"] = pd.to_datetime(tmp["submitted_time"], errors="coerce").dt.strftime("%d-%b")
+        daily_anim = tmp.dropna(subset=["Date"]).groupby("Date").size().reset_index(name="Count")
+    stt_anim = None
+    if "state" in view.columns:
+        stt_anim = view["state"].fillna("Unknown").astype(str).value_counts().reset_index()
+        stt_anim.columns = ["State", "Count"]
+    anim = build_animated_pptx(
+        isp=partner,
+        rng=pack.get("range", ""),
+        kpis=pack.get("kpis"),
+        class_df=cls,
+        daily_df=daily_anim,
+        state_df=stt_anim,
+        sla_df=None,
+        site_df=site_tbl if not site_tbl.empty else None,
+    )
+    st.download_button(
+        f"🎬 Animated graph PPT — {partner}",
+        data=anim,
+        file_name=f"XTRNATE_{partner}_Animated_{start_day}_{end_day}.pptx",
+        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        use_container_width=True,
+    )
+    st.caption("Animated PPT: PowerPoint mein **F5 (Slideshow)** — graphs grow / line draw hoti hai.")
+except Exception as e:
+    st.caption(f"Animated PPT skip: {e}")

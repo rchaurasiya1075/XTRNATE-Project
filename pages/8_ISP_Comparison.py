@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.data_processing import detect_category, get_summary_stats, isp_options, classify_isp
 from utils.isp_deck import build_isp_pptx
+from utils.anim_deck import build_animated_pptx
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
@@ -378,6 +379,33 @@ else:
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
             use_container_width=True,
         )
+    try:
+        anim = build_animated_pptx(
+            isp=partner,
+            rng=f"{meta['from']}  →  {meta['to']}",
+            kpis=[
+                ("TICKETS", meta["tickets"]),
+                ("DT HRS", meta["dt_hrs"]),
+                ("AVG HRS", meta["avg_hrs"]),
+                ("SITES", meta["sites"]),
+                ("OPEN", meta["open"]),
+            ],
+            class_df=cls,
+            daily_df=daily,
+            state_df=stt,
+            site_df=site,
+        )
+        st.download_button(
+            f"🎬 Animated graph PPT — {partner}",
+            data=anim,
+            file_name=f"XTRNATE_{partner}_Animated_{start_day}_to_{end_day}.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            use_container_width=True,
+            key="isp_anim_ppt",
+        )
+        st.caption("Animated PPT: PowerPoint **F5 Slideshow** — daily line draw + bars grow.")
+    except Exception as e:
+        st.caption(f"Animated PPT skip: {e}")
 
 st.markdown("---")
 st.subheader("Current open (selected ISP)")

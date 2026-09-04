@@ -12,6 +12,7 @@ from utils.data_processing import process_closed_tickets, classify_isp, isp_opti
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
+from utils.anim_deck import build_animated_pptx
 
 st.set_page_config(
     page_title="Partner Report | XTRNATE", page_icon="📄", layout="wide"
@@ -659,4 +660,47 @@ try:
     )
 except Exception:
     st.caption("Download prepare skip — page data upar same hai.")
+
+try:
+    daily_p = pd.DataFrame()
+    if "submitted_time" in selected.columns:
+        t = selected.copy()
+        t["Date"] = pd.to_datetime(t["submitted_time"], errors="coerce").dt.strftime("%d-%b")
+        daily_p = t.dropna(subset=["Date"]).groupby("Date").size().reset_index(name="Count")
+    cls_p = selected["issue_type"].fillna("Others").astype(str).value_counts().reset_index()
+    cls_p.columns = ["Outage Category", "Count"]
+    stt_p = None
+    if "state" in selected.columns:
+        stt_p = selected["state"].fillna("Unknown").astype(str).value_counts().reset_index()
+        stt_p.columns = ["State", "Count"]
+    site_p = None
+    if "site_code" in selected.columns:
+        site_p = selected.groupby("site_code").size().reset_index(name="Count").sort_values("Count", ascending=False)
+        site_p.columns = ["Site", "Count"]
+    anim = build_animated_pptx(
+        isp=partner,
+        rng=str(period_label),
+        kpis=[
+            ("TICKETS", len(selected)),
+            (">24 HRS", int((selected["resolution_hours"] > 24).sum()) if "resolution_hours" in selected.columns else 0),
+            ("VENDOR CHG", int((selected["issue_type"] == "Vendor Change").sum()) if "issue_type" in selected.columns else 0),
+            ("SITES", int(selected["site_code"].nunique()) if "site_code" in selected.columns else 0),
+        ],
+        class_df=cls_p,
+        daily_df=daily_p,
+        state_df=stt_p,
+        sla_df=sla_df,
+        site_df=site_p,
+    )
+    st.download_button(
+        f"🎬 Animated graph PPT — {partner}",
+        data=anim,
+        file_name=f"XTRNATE_{partner}_{str(period_label).replace(' ', '_')}_Animated.pptx",
+        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        use_container_width=True,
+        key="partner_anim_ppt",
+    )
+    st.caption("PowerPoint mein **F5 Slideshow** — graphs animate (line draw + bars grow).")
+except Exception as e:
+    st.caption(f"Animated PPT skip: {e}")
 
