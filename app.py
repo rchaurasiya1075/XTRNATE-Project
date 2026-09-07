@@ -145,6 +145,7 @@ sim_lastmile = [
     st.Page("pages/22_Last_Mile_Update.py", title="Last Mile Update", icon="📍"),
 ]
 tools = [
+    st.Page("pages/25_Power_BI.py", title="Power BI", icon="📊"),
     st.Page("pages/24_Excel_to_PPT.py", title="Excel to PPT", icon="🎬"),
     st.Page("pages/2_Upload_Data.py", title="Upload Data", icon="📤"),
     st.Page("pages/5_Escalation_Matrix.py", title="Escalation Matrix", icon="⚙️"),

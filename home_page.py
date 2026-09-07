@@ -130,6 +130,7 @@ PAGE_CATS = [
         ("pages/22_Last_Mile_Update.py", "Last Mile Update", "📍"),
     ]),
     ("🔧 Tools", [
+        ("pages/25_Power_BI.py", "Power BI", "📊"),
         ("pages/24_Excel_to_PPT.py", "Excel to PPT", "🎬"),
         ("pages/2_Upload_Data.py", "Upload Data", "📤"),
         ("pages/5_Escalation_Matrix.py", "Escalation Matrix", "⚙️"),
