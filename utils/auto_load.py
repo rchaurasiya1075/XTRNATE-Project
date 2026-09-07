@@ -19,6 +19,13 @@ def _mark_updated():
 
 def auto_load_tickets(force: bool = False):
     init_data_source()
+    # Upload mode never pulls Google unless the user switched back.
+    if not force and st.session_state.get("data_source") == "upload":
+        from utils.data_source import has_upload, apply_active
+        if has_upload():
+            apply_active()
+            return True, "using_upload"
+        return True, "upload_mode_waiting"
     if not force and st.session_state.get('closed_df') is not None:
         if 'data_last_updated' not in st.session_state:
             _mark_updated()

@@ -239,8 +239,12 @@ def ensure_ready():
     if "selected_isps" not in st.session_state:
         st.session_state.selected_isps = None
     if st.session_state.get("closed_df") is None:
-        with st.spinner("Data auto-fetch..."):
-            auto_load_tickets()
+        if st.session_state.get("data_source") == "upload":
+            from utils.data_source import apply_active
+            apply_active()
+        else:
+            with st.spinner("Data auto-fetch..."):
+                auto_load_tickets()
     show_last_update()
     render_isp_multiselect(location="main", key="isp_multi_main")
     with st.sidebar:

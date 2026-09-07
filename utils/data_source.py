@@ -78,12 +78,7 @@ def apply_active():
         source = "google"
         st.session_state.data_source = source
     slot = _bucket(project).get(source) or _empty_slot()
-    if not _slot_has_data(slot) and source == "upload":
-        g = _bucket(project)["google"]
-        if _slot_has_data(g):
-            source = "google"
-            st.session_state.data_source = "google"
-            slot = g
+    # Never silently swap Upload → Google. Empty upload stays empty.
     st.session_state.closed_df = slot.get("closed")
     st.session_state.open_df = slot.get("open")
     st.session_state.raw_tickets_df = slot.get("raw") if slot.get("raw") is not None else slot.get("closed")
@@ -113,11 +108,63 @@ def set_source(source: str):
     init_data_source()
     if source not in ("google", "upload"):
         return
-    slot = _bucket(st.session_state.active_project)[source]
-    if source == "upload" and not _slot_has_data(slot):
-        return
     st.session_state.data_source = source
     apply_active()
+
+
+def ingest_tickets_file(uploaded, *, note=None) -> str:
+    """Parse Excel/CSV into the Manual Excel slot and make it the active source."""
+    from utils.data_processing import process_closed_tickets, process_open_tickets
+
+    name = getattr(uploaded, "name", "upload.xlsx")
+    low = str(name).lower()
+    if low.endswith(".csv"):
+        df = pd.read_csv(uploaded)
+    else:
+        df = pd.read_excel(uploaded, engine="openpyxl")
+    df.columns = [str(c).strip() for c in df.columns]
+    processed = process_closed_tickets(df)
+    closed, opened = processed, None
+    if processed is not None and not processed.empty and "status" in processed.columns:
+        status_str = processed["status"].astype(str).str.lower()
+        open_mask = (
+            status_str.str.contains("assign to fe", na=False)
+            | status_str.str.contains("call on hold", na=False)
+            | status_str.str.contains("on hold", na=False)
+        )
+        opened = processed[open_mask].copy()
+        closed = processed[~open_mask].copy()
+        if opened is not None and not opened.empty:
+            opened = process_open_tickets(opened)
+        else:
+            opened = None
+        if closed is None or closed.empty:
+            closed = None
+    save_upload(closed, opened, processed, note=note or name)
+    n_c = 0 if closed is None else len(closed)
+    n_o = 0 if opened is None else len(opened)
+    return f"Using {name}  •  Closed {n_c}  •  Open {n_o}"
+
+
+def render_data_mode(*, key="data_mode"):
+    """Compact Google vs Upload switch. Returns 'google' or 'upload'."""
+    init_data_source()
+    labels = ["Google Sheet", "Uploaded Excel"]
+    if key not in st.session_state:
+        st.session_state[key] = labels[1 if st.session_state.data_source == "upload" else 0]
+    pick = st.radio(
+        "Data mode",
+        labels,
+        horizontal=True,
+        key=key,
+        help="Uploaded Excel uses only the file you loaded. Google Sheet is not read in that mode.",
+    )
+    want = "upload" if pick == "Uploaded Excel" else "google"
+    if want != st.session_state.data_source:
+        set_source(want)
+        st.rerun()
+    return want
+
 
 
 def set_project(name: str):

@@ -1,122 +1,109 @@
-import streamlit as st
-import sys
 import os
-import pandas as pd
-import io
+import sys
+
+import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
-from utils.site_search import render_site_history_panel, render_last_month_down_categories
-from utils.bootstrap import ensure_ready
-from utils.excel_export import excel_bytes
-from utils.report_download import download_pack
+from utils.bootstrap import show_last_update
+from utils.data_source import (
+    has_google,
+    has_upload,
+    ingest_tickets_file,
+    init_data_source,
+    render_data_mode,
+    source_status,
+)
+from utils.site_search import render_last_month_down_categories, render_site_history_panel
 
-st.set_page_config(page_title="Site Search | XTRNATE", page_icon="🔍", layout="wide")
-ensure_ready()
+st.set_page_config(page_title="Site Search | Xtranet", page_icon="🔍", layout="wide")
+init_data_source()
 
-# Same CSS theme as Circuit ID
 st.markdown("""
 <style>
-@media (max-width: 768px) {
-  .block-container { padding: 0.6rem !important; }
+@media (max-width: 768px) { .block-container { padding: 0.6rem !important; } }
+div[data-testid="stMetric"] {
+  background: #F3F5F4; border: 1px solid #D4D9D6; border-left: 4px solid #1B4D3E;
+  border-radius: 12px; padding: 0.5rem 0.75rem;
 }
-
-.ckt-hero {
-  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 70%);
-  border: 1px solid #38bdf8;
-  border-radius: 18px;
-  padding: 1.4rem 1.6rem 1.1rem 1.6rem;
-  margin-bottom: 1.2rem;
-  box-shadow: 0 10px 30px rgba(15,23,42,0.35);
+.search-hero {
+  background: linear-gradient(135deg, #1B4D3E 0%, #2D6A4F 80%);
+  border-radius: 16px; padding: 1rem 1.25rem; margin-bottom: 0.9rem; color: #fff;
 }
-.ckt-hero h1 { color: #fff; margin: 0 0 0.25rem 0; font-size: 1.7rem; }
-.ckt-hero p { color: #cbd5e1; margin: 0; }
-
-.ckt-card {
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 16px;
-  padding: 1.2rem 1.4rem;
-  margin-top: 0.8rem;
-  margin-bottom: 1rem;
-}
-.ckt-label { color: #94a3b8; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 0.2rem; }
+.search-hero h1 { margin: 0 0 0.15rem 0; font-size: 1.45rem; }
+.search-hero p { margin: 0; color: #E8F0EC; font-size: 0.9rem; }
 </style>
 """, unsafe_allow_html=True)
 
-# Hero Header (Same as Circuit ID Page)
+show_last_update()
 st.markdown("""
-<div class="ckt-hero">
-  <h1>🔍 Site Code Search</h1>
-  <p>Look up any site code &nbsp;•&nbsp; Down history, reason, resolution — full breakdown</p>
+<div class="search-hero">
+  <h1>🔍 Site Search</h1>
+  <p>Pick Google Sheet or Uploaded Excel — search uses only that source</p>
 </div>
 """, unsafe_allow_html=True)
 
-# Auto load if needed
-if st.session_state.get('closed_df') is None:
-    with st.spinner("Data auto-load..."):
-        auto_load_tickets()
+mode = render_data_mode(key="site_data_mode")
+st.caption(source_status())
 
-if 'selected_isp' not in st.session_state:
-    st.session_state.selected_isp = "ALL"
-
-closed = st.session_state.get('closed_df')
-if closed is not None and not closed.empty:
-    st.caption(f"Total history records loaded: **{len(closed)}** tickets")
-
-render_last_month_down_categories()
-st.markdown("---")
-
-q = st.text_input(
-    "Search Site Code",
-    placeholder="XTNNTL358 / XTNSLN354 ...",
-    key="page_site_search",
-)
-
-if q and q.strip():
-    site_code = q.strip().upper()
-    
-    # Quick copy snippet box matching CKT theme
-    with st.container():
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown('<div class="ckt-label">Searching Site Code — copy</div>', unsafe_allow_html=True)
-            st.code(site_code, language=None)
-        with c2:
-            st.download_button(
-                "📋 Site Code txt",
-                data=site_code,
-                file_name=f"{site_code}_site.txt",
-                mime="text/plain",
-                key=f"dl_site_{site_code}",
-                use_container_width=True,
-            )
-            
-    # Render main history panel
-    render_site_history_panel(site_code)
-
-    # Export history data if available in closed_df
-    if closed is not None and not closed.empty and 'site_code' in closed.columns:
-        filtered_history = closed[closed['site_code'].astype(str).str.upper() == site_code]
-        if not filtered_history.empty:
-            st.markdown("#### Export Site History")
-            download_pack(
-                f"{site_code} History",
-                filtered_history,
-                file_stem=f"Site_History_{site_code}",
-                title=f"Site History  ·  {site_code}",
-                sheet_name="Site_History",
-                key=f"site_hist_{site_code}",
-            )
+if mode == "upload":
+    up = st.file_uploader(
+        "Excel / CSV for this search",
+        type=["xlsx", "xls", "csv"],
+        key="site_mode_file",
+        help="Loaded file is stored as Manual Excel. Google Sheet is not read.",
+    )
+    b1, b2 = st.columns([1, 2])
+    with b1:
+        load_it = st.button("Load file", type="primary", use_container_width=True, disabled=up is None)
+    if load_it and up is not None:
+        with st.spinner("Reading Excel…"):
+            try:
+                msg = ingest_tickets_file(up)
+                st.success(msg)
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+    if not has_upload():
+        st.warning("Upload mode is on. Load an Excel file above — Google Sheet will not be used.")
+        st.stop()
 else:
-    st.info("Type a site code in the box above. Example: `XTNSLN354`")
+    if st.session_state.get("closed_df") is None and not has_google():
+        with st.spinner("Loading Google Sheet…"):
+            auto_load_tickets()
+    if st.session_state.get("closed_df") is None:
+        st.warning("Google Sheet has no tickets yet.")
+        st.stop()
 
-# Quick suggestions from data formatted in CKT Dark Card style
-if closed is not None and not closed.empty and 'site_code' in closed.columns:
-    top = closed['site_code'].value_counts().head(12)
-    st.markdown("""
-    <div class="ckt-card">
-        <div class="ckt-label">Top Repeated Sites (Click to copy-paste in search)</div>
-    """, unsafe_allow_html=True)
-    st.write(", ".join([f"`{s}`" for s in top.index.tolist()]))
-    st.markdown("</div>", unsafe_allow_html=True)
+closed = st.session_state.get("closed_df")
+n = 0 if closed is None else len(closed)
+src_lab = "Uploaded Excel" if mode == "upload" else "Google Sheet"
+note = st.session_state.get("data_source_note") or ""
+st.success(f"{src_lab}{(' · ' + note) if note else ''}  •  {n} tickets")
+
+s1, s2 = st.columns([5, 1])
+with s1:
+    q = st.text_input(
+        "Site code",
+        placeholder="XTNNTL358  ·  type and press Enter",
+        key="page_site_search",
+        label_visibility="collapsed",
+    )
+with s2:
+    go = st.button("Search", type="primary", use_container_width=True, key="page_site_go")
+
+if q and (go or q.strip()):
+    render_site_history_panel(q.strip().upper())
+else:
+    st.caption("Type a site code to see down history, reasons and resolution.")
+
+with st.expander("Last 30 days — 3 / 5 / 6 / 7+ downs", expanded=False):
+    render_last_month_down_categories()
+
+if closed is not None and not closed.empty and "site_code" in closed.columns:
+    with st.expander("Frequent sites in this source", expanded=False):
+        top = closed["site_code"].astype(str).str.upper().value_counts().head(12)
+        pick = st.selectbox("Jump to site", ["—"] + list(top.index), key="freq_jump")
+        st.caption("  ·  ".join(f"{k} ({int(v)})" for k, v in top.items()))
+        if pick and pick != "—":
+            render_site_history_panel(pick)
