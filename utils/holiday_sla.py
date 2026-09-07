@@ -82,7 +82,7 @@ def adjust_ticket(submitted, resolved, reported_min, extra=None):
             "raw_min": raw,
             "holiday_min": 0,
             "adj_min": raw,
-            "why": "Submitted / Resolved missing — holiday minus nahi nikala",
+            "why": "Submitted / Resolved missing — holiday minutes not subtracted",
             "holiday_days": "",
         }
     start = pd.Timestamp(submitted).to_pydatetime().replace(tzinfo=None)
@@ -112,11 +112,11 @@ def adjust_ticket(submitted, resolved, reported_min, extra=None):
     hmin = min(hmin, max(raw, 0))
     adj = max(raw - hmin, 0)
     if hmin == 0:
-        why = "Is ticket ke Submitted→Resolved window mein Sunday / 2nd-4th Sat / public holiday overlap nahi. Reported DT same rakha."
+        why = "No Sunday / 2nd-4th Sat / public holiday overlap in this ticket window. Reported DT kept as-is."
     else:
         why = (
             f"Reported / clock DT {raw} min. Holiday overlap {hmin} min minus kiya "
-            f"kyunki outage in days pe pada: {'; '.join(pieces)}. "
+            f"because the outage landed on: {'; '.join(pieces)}. "
             f"Billable / working DT = {adj} min ({round(adj/60, 2)} hrs)."
         )
     return {

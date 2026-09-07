@@ -79,7 +79,7 @@ def _ws_by_gid(ss, gid):
         for w in ss.worksheets():
             if int(getattr(w, "id", -1)) == gid:
                 return w
-        raise RuntimeError(f"Worksheet gid={gid} nahi mili")
+        raise RuntimeError(f"Worksheet gid={gid} not found")
 
 
 def _pad(row, n):

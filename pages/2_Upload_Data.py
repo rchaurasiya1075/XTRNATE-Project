@@ -11,7 +11,7 @@ from utils.bootstrap import ensure_ready
 st.set_page_config(page_title="Upload Data | XTRNATE", page_icon="📤", layout="wide")
 
 st.title("📤 Upload Data")
-st.markdown("Excel upload **ya** Google Sheet se load karo. Google Sheet data refresh ke baad bhi 1 click mein aa jayega.")
+st.markdown("Upload Excel **or** load from Google Sheet. After a refresh, Google Sheet data still loads in one click.")
 
 isp = ensure_ready()
 st.info(f"Active ISP context: **{isp}** (data filter sidebar / top se)")
@@ -29,22 +29,22 @@ with tab1:
     st.markdown("""
     **Apka sheet already default set hai.**
     
-    1. Sheet **Share → Anyone with the link → Viewer** hona chahiye
-    2. Data type select karo
-    3. **Load** button dabao
+    1. Sheet **Share → Anyone with the link → Viewer** is required
+    2. Select the data type
+    3. Click **Load**
     """)
     
     sheet_url = st.text_input(
         "Google Sheet URL",
         value="https://docs.google.com/spreadsheets/d/1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I/edit?usp=sharing",
-        help="Tickets wala sheet"
+        help="Tickets sheet"
     )
     
     col_a, col_b = st.columns(2)
     with col_a:
         gid = st.number_input("Sheet Tab GID (0 = first tab)", min_value=0, value=0, step=1)
     with col_b:
-        data_type = st.selectbox("Yeh data kya hai?", [
+        data_type = st.selectbox("What is this data?", [
             "Tickets (Auto Split by Status)",
             "Site Master",
             "Closed Only",
@@ -94,7 +94,7 @@ with tab1:
                             st.dataframe(open_part.head(5), use_container_width=True)
                     else:
                         st.session_state.closed_df = processed
-                        st.warning("Status column nahi mila → saara Closed")
+                        st.warning("Status column not found → treated as Closed")
                 
                 elif data_type == "Closed Only":
                     processed = process_closed_tickets(df)

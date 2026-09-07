@@ -17,8 +17,8 @@ ensure_ready()
 
 st.title("🎉 Holiday Adjusted Downtime")
 st.caption(
-    "Sunday + 2nd/4th Saturday + national/festival holiday ko Submitted→Resolved window se minus. "
-    "Down Time column minutes mein consider."
+    "Sunday + 2nd/4th Saturday + national/festival holidays subtracted from the Submitted→Resolved window. "
+    "Down Time column is treated as minutes."
 )
 
 closed = st.session_state.get("closed_df")
@@ -26,7 +26,7 @@ raw = st.session_state.get("raw_tickets_df")
 if closed is None or closed.empty:
     closed = raw if raw is not None else pd.DataFrame()
 if closed is None or closed.empty:
-    st.warning("Data nahi hai. Home pe sheet load karo.")
+    st.warning("No data. Load the sheet on Home.")
     st.stop()
 
 work = closed.copy()
@@ -59,7 +59,7 @@ if "submitted_time" in view.columns:
     view = view[view["submitted_time"].notna() & (view["submitted_time"] >= start_ts) & (view["submitted_time"] < end_ts)]
 
 if view.empty:
-    st.info("Is range mein ticket nahi.")
+    st.info("No tickets in this range.")
     st.stop()
 
 rows = []
@@ -92,9 +92,9 @@ k3.metric("Holiday minus hrs", round(out["Holiday minus (hrs)"].sum(), 1))
 k4.metric("Adjusted DT hrs", round(out["Adjusted DT (hrs)"].sum(), 1))
 
 st.info(
-    "Logic: Submitted Time se Resolved Time tak window. Usme Sunday, 2nd Saturday, 4th Saturday, "
-    "national/festival holiday ke overlapping minutes nikaal ke Reported Down Time (minutes) se minus. "
-    "Minus isliye — bank/NOC holiday pe working SLA clock nahi chalti. Adjusted DT = working-hour downtime."
+    "Logic: window from Submitted Time to Resolved Time. Overlapping minutes on Sunday, 2nd Saturday, 4th Saturday "
+    "and national/festival holidays are subtracted from Reported Down Time (minutes). "
+    "Subtracted because the SLA clock does not run on bank/NOC holidays. Adjusted DT = working-hour downtime."
 )
 
 with st.expander("Built-in public / festival list"):

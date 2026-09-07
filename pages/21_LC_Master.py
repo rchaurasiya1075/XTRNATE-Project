@@ -27,7 +27,7 @@ ensure_ready()
 
 st.title("LC Master")
 st.caption(
-    "Site code search → LC details. Same number 2 baar nahi. Naya number hi next column."
+    "Site code search → LC details. The same number is not stored twice. Only a new number goes to the next column."
 )
 
 st.markdown("""
@@ -231,7 +231,7 @@ try:
 except Exception:
     target = pd.DataFrame()
 
-if st.button("Reload + auto (poori sheet dubara padho)"):
+if st.button("Reload + auto (re-read full sheet)"):
     load_old_lc.clear()
     load_pending_mail.clear()
     load_target.clear()
@@ -319,7 +319,7 @@ merged = pd.DataFrame(rows)
 st.markdown("---")
 st.subheader("🔍 Site code search — LC details")
 sq = st.text_input(
-    "Site code likho",
+    "Enter site code",
     placeholder="XTNFAT357",
     key="lc_lookup_box",
     label_visibility="collapsed",
@@ -331,7 +331,7 @@ if sq:
     rest = hits[hits["site_code"] != sq]
     hits = pd.concat([exact, rest], ignore_index=True)
     if hits.empty:
-        st.warning(f"`{sq}` ka LC data nahi mila.")
+        st.warning(f"`{sq}` — LC data not found.")
     else:
         for i, row in hits.head(12).iterrows():
             site = clean(row.get("site_code"))
@@ -368,7 +368,7 @@ if sq:
         ] if c in hits.columns]
         st.dataframe(hits[show], use_container_width=True, hide_index=True)
 else:
-    st.info("Upar box mein site code likho — LC name, number, mail, bank/branch turant dikhega.")
+    st.info("Type a site code above — LC name, number, mail, bank/branch appear immediately.")
 
 need_fill = []
 if not target.empty:
@@ -447,7 +447,7 @@ if q:
         st.warning(f"Naya number (next column): {extra}")
         default_name, default_ph = mail_name or old_name, mail_ph or old_ph
     elif mail_ph and last10s(mail_ph) <= last10s(old_ph):
-        st.info("Yahi number pehle se LC mein hai — skip. Duplicate nahi likhega.")
+        st.info("This number is already on the LC — skipped. Duplicates are not written.")
         default_name, default_ph = old_name, old_ph
     else:
         default_name, default_ph = mail_name or old_name, mail_ph or old_ph
@@ -460,9 +460,9 @@ if q:
     if st.button("Save manual (Excel + Firebase)"):
         new_ph_u = unique_contact(new_ph)
         if not new_name and not new_ph_u:
-            st.warning("Name ya number dalo.")
+            st.warning("Enter a name or number.")
         elif last10s(new_ph_u) and last10s(new_ph_u) <= last10s(old_ph) and clean(new_name) == clean(old_name):
-            st.info("Same details — skip. Duplicate write nahi.")
+            st.info("Same details — skipped. Duplicate write blocked.")
         else:
             if firebase_ready():
                 try:
@@ -480,7 +480,7 @@ if q:
                 st.error(f"{type(e).__name__}: {e}")
 
 st.markdown("---")
-st.subheader("LC tab (401145054) poori list")
+st.subheader("LC tab (401145054) full list")
 st.dataframe(old[["site_code", "lc_name", "lc_phone", "handled_by"]], use_container_width=True, height=300)
 download_pack(
     "LC tab",

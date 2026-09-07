@@ -14,14 +14,14 @@ from utils.report_download import download_pack
 st.set_page_config(page_title="Vendor Change | XTRNATE", page_icon="🔄", layout="wide")
 
 st.title("🔄 Vendor Change Register")
-st.caption("Remark se vendor change tickets → Firebase save • site-wise restore / status update")
+st.caption("Vendor-change tickets from remarks → save to Firebase • site-wise restore / status update")
 
 ensure_ready()
 if st.session_state.get("closed_df") is None:
     auto_load_tickets()
 
 if not firebase_ready():
-    st.error("Firebase secrets nahi mile. Streamlit Cloud → Settings → Secrets mein service account JSON dalo.")
+    st.error("Firebase secrets not found. Streamlit Cloud → Settings → Secrets — paste the service account JSON.")
     st.code("[firebase]\nprojectId = \"xtranet-d7dca\"\n\n[google_service_account]\n...json fields...", language="toml")
     st.stop()
 
@@ -42,7 +42,7 @@ for key in ("closed_df", "open_df", "raw_tickets_df"):
     if df is not None and not getattr(df, "empty", True):
         frames.append(df)
 if not frames:
-    st.warning("Ticket data nahi mila.")
+    st.warning("Ticket data not found.")
     st.stop()
 
 all_df = pd.concat(frames, ignore_index=True)
@@ -58,7 +58,7 @@ st.metric("Vendor-change remarks (sheet)", len(vendor_tix))
 
 col_a, col_b = st.columns(2)
 with col_a:
-    if st.button("🔄 Sheet se Firebase sync", type="primary"):
+    if st.button("🔄 Sync sheet to Firebase", type="primary"):
         n = 0
         for _, row in vendor_tix.iterrows():
             tid = str(row.get("ticket_id", "") or "").strip() or f"row-{n}"
@@ -77,11 +77,11 @@ with col_a:
             }
             upsert("vendor_changes", tid, doc)
             n += 1
-        st.success(f"{n} records Firebase mein save/merge.")
+        st.success(f"{n} records saved/merged in Firebase.")
         st.rerun()
 
 with col_b:
-    st.caption("Pehle se saved record overwrite nahi hota except sheet fields. work_status / new_isp tumhara rehta hai (merge).")
+    st.caption("Existing saved records are not overwritten except sheet fields. work_status / new_isp stay yours (merge).")
 
 try:
     saved = list_all("vendor_changes")
@@ -92,7 +92,7 @@ except Exception as e:
 saved_df = pd.DataFrame(saved) if saved else pd.DataFrame()
 st.subheader("Firebase register")
 if saved_df.empty:
-    st.info("Abhi Firebase empty hai. Upar Sync dabao.")
+    st.info("Firebase is empty. Click Sync above.")
 else:
     show = saved_df[[c for c in [
         "site_code", "ticket_id", "isp", "work_status", "new_isp",

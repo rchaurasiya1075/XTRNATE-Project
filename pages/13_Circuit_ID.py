@@ -114,9 +114,9 @@ if q and q.strip():
         matches = pd.concat([exact, rest], ignore_index=True)
 
 if not q or not q.strip():
-    st.info("Upar box mein Site Code likho. Example: `XTNSLN354`")
+    st.info("Type a site code in the box above. Example: `XTNSLN354`")
 elif matches.empty:
-    st.warning(f"`{q}` ka Circuit ID nahi mila. Code check karo.")
+    st.warning(f"`{q}` — Circuit ID not found. Check the code.")
 else:
     for i, row in matches.head(15).iterrows():
         site = str(row.get('site_code', '—') or '—')
@@ -173,7 +173,7 @@ else:
     
     st.markdown("#### Result table")
     st.dataframe(matches[show_cols], use_container_width=True, hide_index=True)
-    st.caption("Table se bhi select karke Ctrl+C / long-press copy kar sakte ho.")
+    st.caption("You can also select from the table and copy with Ctrl+C / long-press.")
     
     # Export options for filtered results
     download_pack(

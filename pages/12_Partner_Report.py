@@ -224,13 +224,13 @@ def ticket_view(df):
     return out.reset_index(drop=True)
 
 
-def show_ticket_groups(groups, prefix="", empty_msg="Is period mein is option ke tickets nahi."):
+def show_ticket_groups(groups, prefix="", empty_msg="No tickets for this option in the selected period."):
     """groups = [(label, dataframe), ...] — expander per option with full tickets."""
     groups = [(str(lab), g) for lab, g in groups if g is not None and not getattr(g, "empty", True)]
     if not groups:
         st.caption(empty_msg)
         return
-    st.markdown("**Tickets — har option (expand karke dekho)**")
+    st.markdown("**Tickets — every option (expand to view)**")
     for lab, g in groups:
         n = len(g)
         short = lab if len(lab) <= 80 else lab[:77] + "…"
@@ -284,7 +284,7 @@ def repeat_buckets(selected):
 
 
 st.title("📄 Partner Performance Report")
-st.caption("Date range • 4 points ke har option ke tickets • Repeat sites + detail • Vendor Change alag")
+st.caption("Date range • tickets for every option under the 4 points • Repeat sites + detail • Vendor Change separate")
 
 ensure_ready()
 
@@ -307,7 +307,7 @@ df = st.session_state.get("raw_tickets_df")
 if df is None or df.empty:
     df = st.session_state.get("closed_df")
 if df is None or df.empty:
-    st.warning("Data nahi mila. Refresh button dabao.")
+    st.warning("No data. Click Refresh.")
     st.stop()
 
 work = df.copy()
@@ -362,7 +362,7 @@ st.markdown("---")
 f1, f2, f3 = st.columns([1, 1, 2])
 with f1:
     st.markdown(f"**ISP:** {partner}")
-    st.caption("Top / sidebar se multiple ISP select karo")
+    st.caption("Select multiple ISPs at the top / sidebar")
 with f2:
     date_mode = st.radio("Date", ["Last N months", "From – To"], horizontal=True)
 with f3:
@@ -406,7 +406,7 @@ else:
         period_label = months_n
 
 if selected.empty:
-    st.warning("Is period / partner pe resolved data nahi hai.")
+    st.warning("No resolved data for this period / partner.")
     st.stop()
 
 st.caption(f"Showing **{partner}** • **{period_label}** • {len(selected)} tickets")
@@ -510,11 +510,11 @@ rep_df = pd.DataFrame(rep)
 
 st.subheader("1. Resolution Time Buckets (SLA)")
 st.dataframe(style_blue(sla_df), use_container_width=True, hide_index=True)
-st.caption("Har SLA option ke tickets — Vendor Change jaisa detail.")
+st.caption("Tickets for each SLA option — same drill-down as Vendor Change.")
 show_ticket_groups(
     [(band, selected[selected["sla_band"] == band]) for band in SLA_ORDER],
     prefix="SLA · ",
-    empty_msg="Is period mein SLA tickets nahi.",
+    empty_msg="No SLA tickets in this period.",
 )
 
 st.subheader("2. Problem Classification & Avg Resolution Time")
@@ -543,11 +543,11 @@ for name in split_names:
     })
 st.dataframe(pd.DataFrame(split_rows), use_container_width=True, hide_index=True)
 
-st.caption("Har classification ke tickets.")
+st.caption("Tickets for each classification.")
 show_ticket_groups(
     [(cls, selected[selected["issue_type"] == cls]) for cls in all_cls],
     prefix="Class · ",
-    empty_msg="Is period mein classification tickets nahi.",
+    empty_msg="No classification tickets in this period.",
 )
 
 if "problem_reported" in selected.columns:
@@ -558,7 +558,7 @@ if "problem_reported" in selected.columns:
     tmp = tmp[tmp["_pr"] != ""]
     counts = tmp["_pr"].value_counts()
     if not counts.empty:
-        st.subheader("2c. Problem Reported — har option ke tickets")
+        st.subheader("2c. Problem Reported — tickets per option")
         top_n = 30
         names = list(counts.index[:top_n])
         groups = [(name, tmp[tmp["_pr"] == name]) for name in names]
@@ -582,17 +582,17 @@ rel_opts = RELATED_ORDER + [
     x for x in selected["related_to"].dropna().unique() if x not in RELATED_ORDER
 ]
 st.markdown("#### 3. Problem Related To — tickets")
-st.caption("Third Party, House keeping, Force Majeure, Vendor Change… har option ke tickets.")
+st.caption("Third Party, Housekeeping, Force Majeure, Vendor Change… tickets for every option.")
 show_ticket_groups(
     [(rel, selected[selected["related_to"] == rel]) for rel in rel_opts],
     prefix="Related · ",
-    empty_msg="Problem Related tickets nahi.",
+    empty_msg="No Problem Related tickets.",
 )
 
 st.markdown("#### 4. Repeat Call Analysis — sites + tickets")
 st.caption(
-    "Jo number table mein dikha (1 time / 2 times / … / 5+) uske **kaun se site** aur **kaun se tickets** "
-    "yahan expand karke poori detail ke saath dikhenge."
+    "The count in the table (1 time / 2 times / … / 5+) expands to **which sites** and **which tickets** "
+    "with full detail."
 )
 rb = repeat_buckets(selected)
 repeat_site_frames = []
@@ -659,7 +659,7 @@ try:
         key="partner_report_dl",
     )
 except Exception:
-    st.caption("Download prepare skip — page data upar same hai.")
+    st.caption("Download skipped — the same data is already on this page.")
 
 try:
     daily_p = pd.DataFrame()
@@ -700,7 +700,7 @@ try:
         use_container_width=True,
         key="partner_anim_ppt",
     )
-    st.caption("PowerPoint mein **F5 Slideshow** — graphs animate (line draw + bars grow).")
+    st.caption("In PowerPoint press **F5 Slideshow** — graphs animate (line draw + bars grow).")
 except Exception as e:
     st.caption(f"Animated PPT skip: {e}")
 

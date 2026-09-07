@@ -20,7 +20,7 @@ st.set_page_config(page_title="Conclusion | XTRNATE", page_icon="🧠", layout="
 ensure_ready()
 
 st.title("🧠 Conclusion Dashboard")
-st.caption("Meeting report • saare ISP (Owner) • Last remark tags • Outage click → site details • 15-slide PPT")
+st.caption("Meeting report • all ISPs (Owner) • last-remark tags • click an outage → site details • 15-slide PPT")
 
 closed = st.session_state.get("closed_df")
 opened = st.session_state.get("open_df")
@@ -28,7 +28,7 @@ raw = st.session_state.get("raw_tickets_df")
 if closed is None or closed.empty:
     closed = raw if raw is not None else pd.DataFrame()
 if closed is None or closed.empty:
-    st.warning("Data nahi hai. Home pe load karo.")
+    st.warning("No data. Load it on Home.")
     st.stop()
 
 work = closed.copy()
@@ -63,7 +63,7 @@ else:
 open_view = isp_filter(opened) if opened is not None else pd.DataFrame()
 
 if view.empty:
-    st.info("Is range / ISP pe ticket nahi.")
+    st.info("No tickets for this range / ISP.")
     st.stop()
 
 view["dt_hrs"] = view.apply(dt_hrs, axis=1)
@@ -85,7 +85,7 @@ tags = view["remark_tag"].value_counts().reset_index()
 tags.columns = ["Tag", "Count"]
 tags["%"] = (tags["Count"] / tags["Count"].sum() * 100).round(1)
 
-st.subheader("Outage reason — click karke sites")
+st.subheader("Outage reason — click to see sites")
 pick = st.selectbox("Category", ["All"] + cls["Outage Category"].tolist())
 shown = view if pick == "All" else view[view["outage_class"] == pick]
 left, right = st.columns([1, 2])
@@ -331,6 +331,6 @@ try:
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         use_container_width=True,
     )
-    st.caption("Animated PPT: PowerPoint mein **F5 (Slideshow)** — graphs grow / line draw hoti hai.")
+    st.caption("Animated PPT: in PowerPoint press **F5 (Slideshow)** — graphs grow / the line draws.")
 except Exception as e:
     st.caption(f"Animated PPT skip: {e}")

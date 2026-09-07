@@ -58,7 +58,7 @@ def render_site_history_panel(site_code: str):
     st.markdown(f"### 📍 Site: `{site_code}`")
 
     if hist.empty and opens.empty:
-        st.warning(f"Site **{site_code}** ka koi data nahi mila. Spelling / code check karo.")
+        st.warning(f"No data found for site **{site_code}**. Check the spelling / code.")
         return
 
     # KPIs
@@ -101,3 +101,88 @@ def render_site_history_panel(site_code: str):
             sheet_name="History",
             key=f"dl_hist_{site_code}",
         )
+
+
+def last_month_down_counts(closed=None):
+    """Site → down count in the last 30 days (from latest ticket)."""
+    if closed is None:
+        closed = st.session_state.get("closed_df")
+    empty = pd.Series(dtype=int)
+    if closed is None or closed.empty or "site_code" not in closed.columns:
+        return empty, None, None, pd.DataFrame()
+    df = closed.copy()
+    tcol = "submitted_time" if "submitted_time" in df.columns else None
+    start = end = None
+    if tcol:
+        df[tcol] = pd.to_datetime(df[tcol], errors="coerce")
+        end = df[tcol].max()
+        if pd.isna(end):
+            end = pd.Timestamp.now()
+        start = end - pd.Timedelta(days=30)
+        df = df[df[tcol].notna() & (df[tcol] >= start) & (df[tcol] <= end)]
+    vc = df["site_code"].astype(str).str.strip().str.upper()
+    vc = vc[vc.ne("") & vc.ne("NAN") & vc.ne("NONE")].value_counts()
+    return vc, start, end, df
+
+
+def render_last_month_down_categories():
+    """3 / 5 / 6 / 7+ downs in the last 30 days — click a site for history."""
+    vc, start, end, month_df = last_month_down_counts()
+    rng = ""
+    if start is not None and end is not None:
+        rng = f"{pd.Timestamp(start).strftime('%d-%b-%Y')} → {pd.Timestamp(end).strftime('%d-%b-%Y')}"
+    st.markdown("### Last 30 days — down frequency")
+    st.caption(
+        "How many times each site went down in the last month. "
+        f"{rng}".strip()
+        + "  •  Open a category, then a site, to see full history."
+    )
+    cats = [
+        ("3 times", vc[vc == 3] if not vc.empty else vc),
+        ("5 times", vc[vc == 5] if not vc.empty else vc),
+        ("6 times", vc[vc == 6] if not vc.empty else vc),
+        ("7+ times", vc[vc >= 7] if not vc.empty else vc),
+    ]
+    extra = [
+        ("1 time", vc[vc == 1] if not vc.empty else vc),
+        ("2 times", vc[vc == 2] if not vc.empty else vc),
+        ("4 times", vc[vc == 4] if not vc.empty else vc),
+    ]
+    mcols = st.columns(4)
+    for col, (label, ser) in zip(mcols, cats):
+        col.metric(f"{label} down", int(len(ser)))
+
+    def _show_bucket(label, ser):
+        if ser is None or len(ser) == 0:
+            st.info(f"No sites with {label.lower()} down in the last 30 days.")
+            return
+        top = ser.reset_index()
+        top.columns = ["Site Code", "Downs (last 30 days)"]
+        st.dataframe(top, use_container_width=True, hide_index=True, height=min(360, 48 + 32 * min(len(top), 10)))
+        pick = st.selectbox(
+            f"Open site history — {label}",
+            ["—"] + list(ser.index),
+            key=f"freq_pick_{label.replace(' ', '_')}",
+        )
+        if pick and pick != "—":
+            render_site_history_panel(pick)
+            if month_df is not None and not month_df.empty and "site_code" in month_df.columns:
+                one = month_df[month_df["site_code"].astype(str).str.upper() == pick]
+                cols = [c for c in [
+                    "ticket_id", "submitted_time", "resolved_time", "state", "reason",
+                    "reason_clean", "category", "down_time_min", "owner",
+                ] if c in one.columns]
+                if not one.empty and cols:
+                    st.caption(f"{pick} — tickets in this 30-day window")
+                    st.dataframe(one[cols], use_container_width=True, height=220)
+
+    tabs = st.tabs([f"{lab} ({len(ser)})" for lab, ser in cats] + ["1 / 2 / 4 times"])
+    for tab, (label, ser) in zip(tabs[:4], cats):
+        with tab:
+            _show_bucket(label, ser)
+    with tabs[4]:
+        for label, ser in extra:
+            st.markdown(f"**{label} down — {len(ser)} sites**")
+            _show_bucket(label, ser)
+            st.markdown("---")
+

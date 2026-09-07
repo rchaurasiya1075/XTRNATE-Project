@@ -21,15 +21,38 @@ st.markdown("""
   .block-container { padding: 0.6rem !important; }
   div[data-testid="stMetricValue"] { font-size: 1.05rem !important; }
 }
+div[data-testid="stMetric"] {
+  background: #F3F5F4;
+  border: 1px solid #D4D9D6;
+  border-left: 4px solid #1B4D3E;
+  border-radius: 12px;
+  padding: 0.65rem 0.85rem;
+}
+div[data-testid="stMetricLabel"] { color: #3F5E56 !important; font-weight: 700 !important; }
+div[data-testid="stMetricValue"] { color: #1B4D3E !important; }
+.dash-hero {
+  background: linear-gradient(135deg, #1B4D3E 0%, #2D6A4F 70%);
+  border-radius: 16px;
+  padding: 1.15rem 1.4rem;
+  margin-bottom: 1rem;
+  color: #fff;
+}
+.dash-hero h1 { margin: 0 0 0.2rem 0; font-size: 1.55rem; }
+.dash-hero p { margin: 0; color: #E8F0EC; font-size: 0.92rem; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("📊 Command Dashboard")
+st.markdown("""
+<div class="dash-hero">
+  <h1>📊 Command Dashboard</h1>
+  <p>KPI scorecards • downtime mix • open calls</p>
+</div>
+""", unsafe_allow_html=True)
 isp = ensure_ready()
 st.caption(f"Active: **{isp}** • Data auto-loaded")
 
-st.markdown("### 📋 Multi-site pack")
-st.caption("Kai site codes ek saath paste karo — history + SIM + last mile + LC + circuit ek pack mein.")
+st.markdown("### Multi-site pack")
+st.caption("Paste several site codes together — history + SIM + last mile + LC + circuit in one pack.")
 render_multi_site_pack()
 
 with st.expander("🔍 Single site search", expanded=False):
@@ -73,8 +96,11 @@ if not closed_filtered.empty:
             state_df = closed_filtered.groupby('state')['down_time_min'].sum().reset_index()
             state_df = state_df.sort_values('down_time_min', ascending=False).head(10)
             state_df['hours'] = (state_df['down_time_min'] / 60).round(1)
-            fig = px.bar(state_df, x='state', y='hours', color='hours', color_continuous_scale='Blues', text='hours')
-            fig.update_layout(template='plotly_dark', height=350)
+            fig = px.bar(state_df, x='state', y='hours', color='hours',
+                         color_continuous_scale=['#D8F3DC', '#52B788', '#1B4D3E'], text='hours')
+            fig.update_layout(template='plotly_white', height=350, paper_bgcolor='#F7F8F6',
+                              plot_bgcolor='#FFFFFF', font=dict(color='#1F1F1F'),
+                              coloraxis_colorbar=dict(title='Hours'))
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("State / Down Time missing")
@@ -83,19 +109,23 @@ if not closed_filtered.empty:
         if 'owner' in closed_filtered.columns:
             owner_df = closed_filtered['owner'].value_counts().reset_index()
             owner_df.columns = ['owner', 'count']
-            fig = px.pie(owner_df, names='owner', values='count', hole=0.4)
-            fig.update_layout(template='plotly_dark', height=350)
+            fig = px.pie(owner_df, names='owner', values='count', hole=0.4,
+                         color_discrete_sequence=['#1B4D3E', '#2D6A4F', '#40916C', '#52B788', '#95D5B2', '#B7E4C7', '#C4A35A'])
+            fig.update_layout(template='plotly_white', height=350, paper_bgcolor='#F7F8F6',
+                              font=dict(color='#1F1F1F'))
             st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Top Down Reasons")
     if 'reason_clean' in closed_filtered.columns:
         reason_df = closed_filtered['reason_clean'].value_counts().head(8).reset_index()
         reason_df.columns = ['Reason', 'Count']
-        fig = px.bar(reason_df, x='Count', y='Reason', orientation='h', color='Count', color_continuous_scale='Teal')
-        fig.update_layout(template='plotly_dark', height=400, yaxis={'categoryorder': 'total ascending'})
+        fig = px.bar(reason_df, x='Count', y='Reason', orientation='h', color='Count',
+                     color_continuous_scale=['#FAEEDA', '#C4A35A', '#1B4D3E'])
+        fig.update_layout(template='plotly_white', height=400, yaxis={'categoryorder': 'total ascending'},
+                          paper_bgcolor='#F7F8F6', plot_bgcolor='#FFFFFF', font=dict(color='#1F1F1F'))
         st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info("Closed data loading... agar empty hai to sheet share check karo.")
+    st.info("Closed tickets are still loading. If this stays empty, check sheet sharing.")
 
 st.markdown("---")
 st.subheader("📞 Current Open Calls")

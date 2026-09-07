@@ -36,7 +36,7 @@ MONTH_ALIAS = {
 
 st.set_page_config(page_title="SIM Backup Usage | XTRNATE", page_icon="📶", layout="wide")
 st.title("📶 SIM Backup Usage vs BB Down")
-st.caption("Backup SIM data • 10 GB plan • Site list: Branch + State + ISP (Owner ke saare names) sheet se")
+st.caption("Backup SIM data • 10 GB plan • Site list: Branch + State + ISP (all Owner names) from the sheet")
 
 ensure_ready()
 if st.session_state.get("closed_df") is None:
@@ -153,7 +153,7 @@ usage["branch_address"] = usage[addr_c].map(clean_cell) if addr_c else ""
 
 gb_cols = detect_gb_columns(usage.columns)
 if not gb_cols:
-    st.error("Month GB columns nahi mili. Header example: `Aug Usage in GB`")
+    st.error("Month GB columns not found. Header example: `Aug Usage in GB`")
     st.write("Sheet columns:", list(usage.columns))
     st.stop()
 
@@ -260,11 +260,11 @@ k4.metric(f"≥ {PLAN_GB:.0f} GB (plan cap)", int((view["usage_gb"] >= PLAN_GB).
 k5.metric("BB downs (un sites pe)", int(view["bb_downs"].sum()) if not view.empty else 0)
 
 if view.empty:
-    st.info("Is filter pe site nahi mili. Usage limit kam karo ya month badlo.")
+    st.info("No sites match this filter. Lower the usage limit or change the month.")
     st.stop()
 
 st.subheader("📊 High SIM usage + us month ke BB downs")
-st.caption("Zyada SIM GB = us month BB unstable. Plan 10 GB. Filter se limit set karo.")
+st.caption("High SIM GB that month usually means unstable broadband. Plan is 10 GB. Set the limit with the filter.")
 
 g1, g2 = st.columns(2)
 with g1:

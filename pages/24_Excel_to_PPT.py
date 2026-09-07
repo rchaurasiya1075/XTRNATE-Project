@@ -13,7 +13,7 @@ st.set_page_config(page_title="Excel to PPT | XTRNATE", page_icon="🎬", layout
 ensure_ready()
 
 st.title("🎬 Excel → PPT automation")
-st.caption("Excel / CSV upload → forest-green PPT with tables + animated graphs. Slideshow (F5) mein charts play honge.")
+st.caption("Upload Excel / CSV → forest-green PPT with tables and animated graphs. Charts play in Slideshow (F5).")
 
 c1, c2 = st.columns([2, 1])
 with c1:
@@ -53,14 +53,14 @@ if use_live:
             sheets["Daily"] = tmp.dropna(subset=["Date"]).groupby("Date").size().reset_index(name="Count")
         st.info(f"Live tickets add: {len(work)} rows")
     else:
-        st.warning("Closed tickets loaded nahi. Home pe data load karo ya Excel upload karo.")
+        st.warning("Closed tickets are not loaded. Load data on Home or upload Excel.")
 
 go = st.button("Generate PPT", type="primary", use_container_width=True, key="x2p_go")
 if go:
     if not sheets:
-        st.warning("Pehle Excel upload karo ya live tickets tick karo.")
+        st.warning("Upload an Excel file first, or tick live tickets.")
     else:
-        with st.spinner("PPT + animated graphs ban rahe hain..."):
+        with st.spinner("Building PPT and animated graphs..."):
             try:
                 ppt = workbook_to_pptx(
                     sheets,

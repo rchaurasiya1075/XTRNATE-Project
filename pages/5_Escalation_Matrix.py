@@ -10,17 +10,17 @@ from utils.bootstrap import ensure_ready, get_selected_isps, available_isps
 st.set_page_config(page_title="Escalation Matrix | XTRNATE", page_icon="⚙️", layout="wide")
 
 st.title("⚙️ Escalation Matrix Configuration")
-st.markdown("Yahan se aap **Name, Email, Time Rules, Level** sab edit kar sakte ho. Har ISP ka alag matrix hai.")
+st.markdown("Edit **Name, Email, Time Rules, Level** here. Each ISP has its own matrix.")
 
 ensure_ready()
 picked = get_selected_isps()
 opts = picked or available_isps()
 if not opts:
-    st.warning("Koi ISP nahi mila. Home pe data load karo.")
+    st.warning("No ISP found. Load data on Home.")
     st.stop()
-isp = opts[0] if len(opts) == 1 else st.selectbox("Matrix kis ISP ka edit karna hai", opts)
+isp = opts[0] if len(opts) == 1 else st.selectbox("Which ISP matrix to edit", opts)
 if not isp or isp in ("ALL", "NONE"):
-    st.warning("Ek specific ISP choose karo — matrix har ISP ke liye alag hai.")
+    st.warning("Choose one ISP — the matrix is different for each partner.")
     st.stop()
 
 st.success(f"Editing Escalation Matrix for: **{isp}**")
@@ -28,7 +28,7 @@ st.success(f"Editing Escalation Matrix for: **{isp}**")
 matrix_df = load_escalation_matrix(isp)
 
 st.subheader("Current Escalation Rules")
-st.caption("Aap directly table mein edit kar sakte ho. Changes save karne ke baad Save button dabayein.")
+st.caption("You can edit the table directly. Click Save after changes.")
 
 edited_df = st.data_editor(
     matrix_df,
@@ -75,9 +75,9 @@ with col2:
 st.markdown("---")
 st.subheader("How it works")
 st.markdown("""
-- **Min_Hours** se **Max_Hours** tak ka time range define karta hai.
-- Ticket kitne hours se open hai, uske hisaab se Level decide hota hai.
-- **Open Escalation** page pe automatically color + person dikhega.
-- Aap levels add/delete bhi kar sakte ho (dynamic rows).
-- Har ISP ka matrix alag save hota hai (Owner column ke names).
+- **Min_Hours** to **Max_Hours** defines the time range.
+- Level is decided by how many hours the ticket has been open.
+- **Open Escalation** will show colour + person automatically.
+- You can also add or delete levels (dynamic rows).
+- Each ISP matrix is saved separately (Owner column names).
 """)

@@ -16,7 +16,7 @@ from utils.report_download import download_pack
 
 st.set_page_config(page_title="ISP Comparison | XTRNATE", page_icon="⚖️", layout="wide")
 st.title("⚖️ ISP Report")
-st.caption("Date range • Owner ke saare ISP • Last remark se category • Repeat 3M/6M • Excel + PPT")
+st.caption("Date range • all ISPs under Owner • category from last remark • Repeat 3M/6M • Excel + PPT")
 ensure_ready()
 
 
@@ -63,7 +63,7 @@ if closed_df is None or closed_df.empty:
     if raw_df is not None and not raw_df.empty:
         closed_df = raw_df.copy()
     else:
-        st.warning("Data nahi hai. Home pe sheet load karo.")
+        st.warning("No data. Load the sheet on Home.")
         st.stop()
 
 work = closed_df.copy()
@@ -109,12 +109,12 @@ with c3:
     date_on = st.selectbox("Date column", ["Submitted Time", "Resolved Time"])
 
 if start_day > end_day:
-    st.error("Starting day end day se pehle hona chahiye.")
+    st.error("Start date must be before end date.")
     st.stop()
 
 time_col = "submitted_time" if date_on == "Submitted Time" else "resolved_time"
 if time_col not in work.columns:
-    st.error(f"{date_on} column nahi mili.")
+    st.error(f"{date_on} column not found.")
     st.stop()
 
 start_ts = pd.Timestamp(start_day)
@@ -141,7 +141,7 @@ split = pd.DataFrame()
 show_s = []
 
 if view.empty:
-    st.info("Is date range / ISP pe closed ticket nahi mila.")
+    st.info("No closed ticket in this date range / ISP.")
     site = pd.DataFrame()
     stt = pd.DataFrame()
     daily = pd.DataFrame()
@@ -175,7 +175,7 @@ else:
         split.columns,
     )
     if split.empty:
-        st.caption("Is date range mein ye remark nahi mile.")
+        st.caption("These remarks were not found in this date range.")
     else:
         st.dataframe(split[show_s].sort_values("outage_class"), use_container_width=True, height=280)
 
@@ -226,10 +226,10 @@ else:
         st.info("site_code missing")
 
     st.subheader("🔁 Repeat sites — is period ke sites ka 3 month / 6 month history")
-    st.caption("Jo site is selected period mein down gayi, uska 3M aur 6M mein kitni baar down + har ticket ka reason aur downtime")
+    st.caption("Sites that went down in this period — downs in 3M and 6M + reason and downtime per ticket")
 
     if "site_code" not in view.columns or hist.empty:
-        st.info("Repeat nikalne ke liye site_code / history nahi mili.")
+        st.info("site_code / history missing, so repeats cannot be computed.")
     else:
         period_sites = view["site_code"].dropna().astype(str).str.upper().unique().tolist()
         look_end = end_ts
@@ -410,7 +410,7 @@ else:
 st.markdown("---")
 st.subheader("Current open (selected ISP)")
 if open_view is None or open_view.empty:
-    st.info("Is ISP pe current open nahi.")
+    st.info("No current open tickets for this ISP.")
 else:
     oc = unique_cols(
         ["ticket_id", "site_code", "status", "state", "submitted_time", "open_hours", "reason"],

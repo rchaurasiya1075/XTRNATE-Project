@@ -22,7 +22,7 @@ closed_df = st.session_state.get('closed_df')
 open_df = st.session_state.get('open_df')
 
 if closed_df is None or closed_df.empty:
-    st.warning("Closed data nahi hai. Pehle Google Sheet / Excel load karo.")
+    st.warning("Closed data is missing. Load the Google Sheet / Excel first.")
     st.stop()
 
 closed_df = apply_isp_filter(closed_df)
@@ -46,7 +46,7 @@ for col in ['owner', 'partner', 'isp_name']:
         break
 
 if vendor_col is None:
-    st.error("Owner / Partner column nahi mila data mein.")
+    st.error("Owner / Partner column not found in the data.")
     st.stop()
 
 st.caption(f"Vendor grouping by column: **{vendor_col}**")
@@ -109,7 +109,7 @@ if 'site_code' in df.columns:
     repeats = site_vendor[site_vendor['count'] >= 2].sort_values('count', ascending=False)
 
     if repeats.empty:
-        st.info("Is period mein koi site 2+ baar nahi aaya.")
+        st.info("No site appeared 2+ times in this period.")
     else:
         st.dataframe(repeats.head(30), use_container_width=True, height=350)
 
@@ -137,7 +137,7 @@ if 'category' in df.columns:
     fig.update_layout(template='plotly_dark', height=400, xaxis_tickangle=-30)
     st.plotly_chart(fig, use_container_width=True)
 else:
-    st.info("Category column nahi hai")
+    st.info("Category column is missing")
 
 st.markdown("---")
 
@@ -153,7 +153,7 @@ if open_df is not None and not open_df.empty and vendor_col in open_df.columns:
     st.plotly_chart(fig, use_container_width=True)
     st.dataframe(open_v, use_container_width=True)
 else:
-    st.info("Open data nahi / vendor column missing in open")
+    st.info("Open data missing / vendor column missing on open tickets")
 
 st.markdown("---")
 

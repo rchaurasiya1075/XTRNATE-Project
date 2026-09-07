@@ -111,6 +111,7 @@ if "site_master" not in st.session_state:
 home = st.Page("home_page.py", title="Home", icon="📡", default=True)
 
 tickets = [
+    st.Page("pages/0_Site_Search.py", title="Site Search", icon="🔍"),
     st.Page("pages/1_Dashboard.py", title="Dashboard", icon="📊"),
     st.Page("pages/23_Multi_Site_Tracker.py", title="Multi Site Tracker", icon="📋"),
     st.Page("pages/4_Open_Escalation.py", title="Open Escalation", icon="🚨"),
@@ -142,7 +143,6 @@ sim_lastmile = [
     st.Page("pages/22_Last_Mile_Update.py", title="Last Mile Update", icon="📍"),
 ]
 tools = [
-    st.Page("pages/0_Site_Search.py", title="Site Search", icon="🔍"),
     st.Page("pages/24_Excel_to_PPT.py", title="Excel to PPT", icon="🎬"),
     st.Page("pages/2_Upload_Data.py", title="Upload Data", icon="📤"),
     st.Page("pages/5_Escalation_Matrix.py", title="Escalation Matrix", icon="⚙️"),

@@ -16,7 +16,7 @@ if "site_master" not in st.session_state:
     st.session_state.site_master = None
 
 if st.session_state.closed_df is None:
-    with st.spinner("📡 Data auto-fetch ho raha hai (Google Sheet)..."):
+    with st.spinner("📡 Fetching Google Sheet data..."):
         ok, msg = auto_load_tickets()
     if ok and msg != "already_loaded":
         st.toast(f"✅ Auto-loaded: {msg}", icon="📡")
@@ -50,17 +50,17 @@ if site_q and (search_btn or site_q):
     render_site_history_panel(site_q.strip().upper())
 
 st.markdown('<div class="search-card">', unsafe_allow_html=True)
-st.markdown("**📋 Multi Site Tracker** — kai site codes ek saath paste (comma / space / new line)")
-st.caption("Har site: ticket history + SIM + last mile + LC + circuit. Neeche Load all sites dabao.")
+st.markdown("**📋 Multi Site Tracker** — paste many site codes (comma / space / new line)")
+st.caption("Each site: ticket history + SIM + last mile + LC + circuit. Click Load all sites.")
 try:
     render_multi_site_pack()
 except Exception as e:
-    st.error("Multi Site Tracker load nahi hua.")
+    st.error("Multi Site Tracker failed to load.")
     st.caption(str(e)[:240])
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("### ISP / Partner filter")
-st.caption("Ek se zyada ISP tick karo — sirf selected ka data har page pe dikhega. Naya ISP sheet mein aaya to list mein auto add.")
+st.caption("Select one or more ISPs — every page shows only the selected partners. New ISPs from the sheet appear automatically.")
 render_isp_multiselect(location="main", key="isp_multi_main")
 
 if st.button("🔄 Force Refresh Google Sheet"):
@@ -88,10 +88,11 @@ if st.session_state.closed_df is not None or st.session_state.open_df is not Non
 
 st.markdown("---")
 st.markdown("### Pages")
-st.caption("Category-wise — click karke page kholo. Sidebar mein bhi yahi groups hain.")
+st.caption("Open a page by category. The sidebar uses the same groups.")
 
 PAGE_CATS = [
     ("🎫 Tickets", [
+        ("pages/0_Site_Search.py", "Site Search", "🔍"),
         ("pages/1_Dashboard.py", "Dashboard", "📊"),
         ("pages/23_Multi_Site_Tracker.py", "Multi Site Tracker", "📋"),
         ("pages/4_Open_Escalation.py", "Open Escalation", "🚨"),
@@ -123,7 +124,6 @@ PAGE_CATS = [
         ("pages/22_Last_Mile_Update.py", "Last Mile Update", "📍"),
     ]),
     ("🔧 Tools", [
-        ("pages/0_Site_Search.py", "Site Search", "🔍"),
         ("pages/24_Excel_to_PPT.py", "Excel to PPT", "🎬"),
         ("pages/2_Upload_Data.py", "Upload Data", "📤"),
         ("pages/5_Escalation_Matrix.py", "Escalation Matrix", "⚙️"),

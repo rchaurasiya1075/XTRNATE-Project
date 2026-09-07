@@ -62,7 +62,7 @@ closed_df = st.session_state.get('closed_df')
 open_df = st.session_state.get('open_df')
 
 if closed_df is None or closed_df.empty:
-    st.warning("Closed data nahi mila. Sheet share check karo.")
+    st.warning("Closed data not found. Check sheet sharing.")
     st.stop()
 
 period = st.radio("Period", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "Overall"], horizontal=True)
@@ -71,7 +71,7 @@ df_all = filter_by_period(closed_df, period_map[period]) if period_map[period] !
 df_all = apply_isp_filter(df_all)
 
 if 'resolution_days' not in df_all.columns:
-    st.error("resolution_days nahi hai. Submitted + Resolved Time-Active chahiye.")
+    st.error("resolution_days is missing. Submitted + Resolved Time-Active are required.")
     st.stop()
 
 if 'penalty_rules' not in st.session_state:
@@ -188,7 +188,7 @@ site_map = {name: site_summary(penalized[name]) for name in isp_names}
 PALETTE = ["#38bdf8", "#f97316", "#a78bfa", "#22c55e", "#eab308", "#f43f5e", "#14b8a6"]
 color_map = {name: PALETTE[i % len(PALETTE)] for i, name in enumerate(isp_names)}
 
-st.subheader("⚡ ISP Penalty Summary (Owner ke saare ISP)")
+st.subheader("⚡ ISP Penalty Summary (all ISPs under Owner)")
 for i in range(0, len(isp_names), 2):
     cols = st.columns(2)
     chunk = isp_names[i:i + 2]
@@ -219,7 +219,7 @@ st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 st.subheader(f"📍 Site-wise Down Count & Downtime — {period}")
-st.caption("Har site: kitni baar down | avg/max hours | total downtime | estimated penalty")
+st.caption("Each site: times down | avg/max hours | total downtime | estimated penalty")
 
 tab_labels = [f"{n} Sites" for n in isp_names] + ["📋 Combined Data"]
 tabs = st.tabs(tab_labels)
@@ -228,7 +228,7 @@ for i, name in enumerate(isp_names):
     with tabs[i]:
         sdf = site_map[name]
         if sdf.empty:
-            st.info(f"{name} site data nahi")
+            st.info(f"{name} site data missing")
         else:
             st.metric(f"Unique sites ({name})", len(sdf))
             st.dataframe(sdf, use_container_width=True, height=420)
@@ -280,7 +280,7 @@ for i, name in enumerate(isp_names):
     with breach_tabs[i]:
         d = penalized[name]
         if d is None or d.empty:
-            st.info(f"{name} tickets nahi")
+            st.info(f"{name} no tickets")
             continue
         hb = d[d["penalty_est"] > 0].sort_values("resolution_hours", ascending=False)
         if hb.empty:

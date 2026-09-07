@@ -135,7 +135,7 @@ def build_html(partner, brand, reason_tbl, loc_tbl, rows):
 
 
 st.title("📧 Pending Call Mail")
-st.caption("Data sirf OPEN CALLS sheet se • Owner ke saare ISP alag • purane pages same")
+st.caption("Data from the OPEN CALLS sheet only • every ISP under Owner • other pages unchanged")
 
 if st.button("🔄 Reload mail sheet"):
     load_mail_sheet.clear()
@@ -146,11 +146,11 @@ try:
         df = load_mail_sheet()
 except Exception as e:
     st.error(str(e))
-    st.info("Sheet Share → Anyone with the link → Viewer hona chahiye.")
+    st.info("Sheet Share → Anyone with the link → Viewer is required.")
     st.stop()
 
 if df.empty:
-    st.warning("Is sheet tab pe ticket nahi mile.")
+    st.warning("No tickets on this sheet tab.")
     st.stop()
 
 df["_partner"] = df.get("Owner", "").apply(partner_of)
@@ -166,16 +166,16 @@ picked = [x for x in get_selected_isps() if x in opts]
 if not picked:
     picked = list(opts) if isp_label() in ("ALL", "NONE") else []
 if not picked:
-    st.warning("Selected ISP is pending-mail sheet pe nahi. Top / sidebar se ISP tick karo.")
+    st.warning("Selected ISP is not on the pending-mail sheet. Tick an ISP at the top / sidebar.")
     st.stop()
-st.caption("Selected ISP ke hisaab se mail. Multiple select ho to har ISP ka alag tab.")
+st.caption("Mail for the selected ISP. Multiple select shows a tab per ISP.")
 
 
 def render_mail(partner, src):
     brand = {"ONEOTT": "CELERITY", "HCIN": "HICOM"}.get(partner, partner)
     work = src[src["_partner"] == partner].copy()
     if work.empty:
-        st.info(f"{partner} ke pending tickets is sheet pe nahi hain.")
+        st.info(f"{partner} has no pending tickets on this sheet.")
         return
 
     reason_col = "Down Category" if "Down Category" in work.columns else None

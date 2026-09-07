@@ -64,7 +64,7 @@ except Exception as e:
 
 if inv is None or inv.empty:
     st.warning(
-        "SIM inventory tab load nahi hui.\n\n"
+        "SIM inventory tab did not load.\n\n"
         f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit?gid={GID}"
     )
     if err:

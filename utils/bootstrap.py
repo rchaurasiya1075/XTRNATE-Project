@@ -71,11 +71,11 @@ def show_last_update():
         if mins < 1:
             ago = "just now"
         elif mins < 60:
-            ago = f"{mins} min pehle"
+            ago = f"{mins} min ago"
         elif mins < 1440:
-            ago = f"{mins // 60} hr {mins % 60} min pehle"
+            ago = f"{mins // 60} hr {mins % 60} min ago"
         else:
-            ago = f"{mins // 1440} day pehle"
+            ago = f"{mins // 1440} day ago"
         stamp = ts.strftime("%d-%b-%Y %I:%M:%S %p IST")
         extra = []
         if tid and tid.lower() not in ("nan", "none"):
@@ -194,12 +194,12 @@ def render_isp_multiselect(location="main", key="isp_multi_main"):
     with box:
         if location == "sidebar":
             st.markdown("**ISP / Partner filter**")
-            st.caption("Ek se zyada tick kar sakte ho")
+            st.caption("You can select more than one")
         picked = st.multiselect(
             "ISP / Partner (multiple)",
             options=opts,
             key=key,
-            help="Jitne ISP chahiye tick karo — sirf unhi ka data dikhega.",
+            help="Tick every ISP you need — only their data is shown.",
             placeholder="Select one or more ISP…",
         )
         c1, c2 = st.columns(2)
@@ -219,7 +219,7 @@ def render_isp_multiselect(location="main", key="isp_multi_main"):
     st.session_state.selected_isp = label
     if location == "main":
         if not picked:
-            st.warning("Koi ISP select nahi — All ISPs dabao ya list se tick karo.")
+            st.warning("No ISP selected — click All ISPs or tick names from the list.")
         else:
             st.success(f"**Active ISP:** {label}")
     else:
@@ -239,5 +239,5 @@ def ensure_ready():
     render_isp_multiselect(location="main", key="isp_multi_main")
     with st.sidebar:
         st.markdown("**Active ISP / Partner**")
-        st.caption(isp_label() + "  •  Change: page top pe multi-select")
+        st.caption(isp_label() + "  •  Change: multi-select at the top of the page")
     return isp_label()

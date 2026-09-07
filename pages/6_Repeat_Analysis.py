@@ -62,10 +62,10 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # -------------------- TAB 1: State → City → Ticket Drill-down --------------------
 with tab1:
     st.subheader("State → City → Full Ticket Details")
-    st.caption("Pehle State select karo → phir City → uske baad us city ke saare tickets (Site Code, Incident ID, Submitted, Resolved, Reason) dikhenge.")
+    st.caption("Select State first → then City → then all tickets for that city (Site Code, Incident ID, Submitted, Resolved, Reason).")
 
     if 'state' not in df.columns:
-        st.warning("State column nahi mila. Excel mein State column hona chahiye.")
+        st.warning("State column not found. The Excel file must include State.")
     else:
         # State counts
         state_counts = df['state'].value_counts().reset_index()
@@ -280,7 +280,7 @@ with tab4:
 # -------------------- TAB 5: Current Open Tickets --------------------
 with tab5:
     st.subheader("🚨 Current Open Tickets (Live)")
-    st.caption("Yeh Open tickets hain jo abhi resolve nahi hue. Home page ke ISP filter (Owner ke saare names) se filter hota hai.")
+    st.caption("These open tickets are still unresolved. Filtered by the Home ISP filter (all Owner names).")
 
     if open_df is None or open_df.empty:
         st.info("No open tickets loaded. Upload Open Tickets Excel from Upload Data page.")

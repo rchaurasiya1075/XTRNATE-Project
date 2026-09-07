@@ -207,7 +207,7 @@ def _hist_view(df):
 
 
 def render_multi_site_pack():
-    st.markdown("**Paste site codes** — comma / space / new line. Ek saath history + SIM + last mile + LC + circuit.")
+    st.markdown("**Paste site codes** — comma / space / new line. History + SIM + last mile + LC + circuit together.")
     blob = st.text_area(
         "Site codes",
         placeholder="XTNNTL358\nXTNCHG364, XTNSLN354  XTNDEL201",
@@ -219,18 +219,18 @@ def render_multi_site_pack():
     if not go:
         n = len(parse_site_codes(blob or ""))
         if n:
-            st.caption(f"{n} site code ready — **Load all sites** dabao.")
+            st.caption(f"{n} site code(s) ready — click **Load all sites**.")
         return
 
     codes = parse_site_codes(blob or "")
     if not codes:
-        st.warning("Koi site code nahi mila. Paste karke Load dabao.")
+        st.warning("No site code found. Paste codes and click Load.")
         return
     if len(codes) > 80:
-        st.warning(f"{len(codes)} codes — pehle 80 dikha raha hoon.")
+        st.warning(f"{len(codes)} codes — showing the first 80.")
         codes = codes[:80]
 
-    with st.spinner(f"{len(codes)} sites ka pack ban raha hai..."):
+    with st.spinner(f"{len(codes)} sites — building pack..."):
         pack = build_pack(codes)
 
     summary = pack["summary"]
@@ -241,7 +241,7 @@ def render_multi_site_pack():
     k3.metric("Not found", len(codes) - found_n)
     k4.metric("Past downs", int(summary["past_downs"].sum()) if not summary.empty else 0)
 
-    st.markdown("#### Overall — har site ek row")
+    st.markdown("#### Overall — one row per site")
     st.dataframe(summary, use_container_width=True, height=min(420, 48 + 32 * min(len(summary), 12)))
 
     missing = summary[summary["found"] == "No"]["site_code"].tolist() if not summary.empty else []
@@ -299,4 +299,4 @@ def render_multi_site_pack():
                 st.markdown("**Down history**")
                 st.dataframe(_hist_view(hist), use_container_width=True, height=240)
             if hist.empty and opens.empty:
-                st.caption("Is site pe ticket history nahi mili.")
+                st.caption("No ticket history for this site.")

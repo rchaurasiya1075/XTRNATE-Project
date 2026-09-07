@@ -11,5 +11,5 @@ st.set_page_config(page_title="Multi Site Tracker | XTRNATE", page_icon="📋", 
 ensure_ready()
 
 st.title("📋 Multi Site Tracker")
-st.caption("Kai site codes ek saath paste karo — history, SIM, last mile, LC, circuit. Excel + PDF.")
+st.caption("Paste several site codes together — history, SIM, last mile, LC, circuit. Excel + PDF.")
 render_multi_site_pack()

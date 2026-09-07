@@ -320,7 +320,7 @@ def _pct(part, whole):
 
 def _insights_daily(names, vals):
     if not vals:
-        return ["Is period mein daily ticket series nahi mili.", "Date column check karke dubara export karo."]
+        return ["No daily ticket series for this period.", "Check the date column and export again."]
     total = sum(vals)
     avg = total / len(vals)
     mx = max(vals)
@@ -335,20 +335,20 @@ def _insights_daily(names, vals):
         f"Peak day {peak} ({int(mx)}). Quietest {low} ({int(mn)}).",
     ]
     if trend == "up":
-        lines.append("Trend UP — last third days pe load badha. Capacity / vendor backlog check.")
+        lines.append("Trend UP — load rose in the last third of days. Check capacity / vendor backlog.")
     elif trend == "down":
-        lines.append("Trend DOWN — last third days pe tickets kam. Stabilisation dikh rahi hai.")
+        lines.append("Trend DOWN — tickets fell in the last third of days. Stabilisation is visible.")
     else:
-        lines.append("Trend FLAT — volume steady. Repeat sites pe nazar rakho.")
+        lines.append("Trend FLAT — volume is steady. Watch repeat sites.")
     if mx >= avg * 2 and avg > 0:
-        lines.append("Peak 2× average se upar — spike ka root cause (fibre / node) alag se note karo.")
-    lines.append("Graph play: line left→right draw hoti hai = din-by-din load.")
+        lines.append("Peak is above 2× average — note the spike root cause (fibre / node) separately.")
+    lines.append("Graph play: the line draws left→right = day-by-day load.")
     return lines[:5]
 
 
 def _insights_bars(names, vals, kind="class"):
     if not vals or not names:
-        return ["Is cut pe data nahi. Filter / sheet check karo."]
+        return ["No data for this cut. Check the filter / sheet."]
     total = sum(vals) or 1
     order = sorted(zip(names, vals), key=lambda x: -x[1])
     top_n, top_v = order[0]
@@ -360,25 +360,25 @@ def _insights_bars(names, vals, kind="class"):
         lines.append(f"No.2 = {n2}  ({int(v2)}, {_pct(v2, total)}%).")
     top3 = _pct(sum(v for _, v in order[:3]), total)
     if kind == "class":
-        lines.append(f"Top 3 classes = {top3}% of mix. Inhi pe restoration SOP tight karo.")
+        lines.append(f"Top 3 classes = {top3}% of mix. Tighten restoration SOP on these.")
         if "fibre" in top_n.lower() or "fiber" in top_n.lower():
-            lines.append("Fibre lead hai — route / MC / last-mile partner ko meeting agenda.")
+            lines.append("Fibre leads — put route / MC / last-mile partner on the agenda.")
         elif "vendor" in top_n.lower():
-            lines.append("Vendor change lead — cutover window + LC update track karo.")
+            lines.append("Vendor change leads — track cutover window + LC update.")
         elif "power" in top_n.lower():
-            lines.append("Power lead — node UPS / feeder partner escalate.")
+            lines.append("Power leads — escalate node UPS / feeder partner.")
         else:
-            lines.append("Lead class ko owner + TAT ke saath close karo.")
+            lines.append("Close the lead class with an owner and TAT.")
     elif kind == "state":
-        lines.append(f"Top 3 states = {top3}% tickets. Field team yahin concentrate.")
-        lines.append("High-count state mein repeat sites alag se nikaalo.")
+        lines.append(f"Top 3 states = {top3}% tickets. Concentrate the field team here.")
+        lines.append("Pull repeat sites separately in the high-count state.")
     elif kind == "site":
-        lines.append("Yeh chronic / hotspot sites hain — 3M/6M repeat ke saath padho.")
-        lines.append("Top site pe last-mile + SIM backup status meeting mein confirm.")
+        lines.append("These are chronic / hotspot sites — read with 3M/6M repeat.")
+        lines.append("Confirm last-mile + SIM backup status for the top site in the meeting.")
     elif kind == "sla":
-        lines.append("Green buckets = on-track. Long buckets = penalty risk.")
-        lines.append(">24h share kam karna hi partner ask hona chahiye.")
-    lines.append("Graph play: bars 0 se full height tak grow karte hain.")
+        lines.append("Green buckets = on track. Long buckets = penalty risk.")
+        lines.append("Reducing the >24h share should be the partner ask.")
+    lines.append("Graph play: bars grow from 0 to full height.")
     return lines[:6]
 
 
@@ -396,8 +396,8 @@ def _insights_exec(isp, rng, kpis, class_names, class_vals, daily_vals, state_na
     if state_names and state_vals:
         st = state_names[state_vals.index(max(state_vals))]
         lines.append(f"Hottest state: {st}.")
-    lines.append("Agle slides: animated graph + uski reading (visualization explain).")
-    lines.append("Meeting use: F5 Slideshow, har graph ke right panel pe talking points.")
+    lines.append("Next slides: animated graph + how to read it.")
+    lines.append("Meeting use: F5 Slideshow; talking points are on the right of each graph.")
     return lines[:7]
 
 
@@ -462,7 +462,7 @@ def build_animated_pptx(
         _rect(s, left, 1.4, 2.4, 1.7, colors[i % len(colors)])
         _tb(s, left + 0.08, 1.52, 2.24, 0.35, str(lab), 11, True, MUTED, PP_ALIGN.CENTER)
         _tb(s, left + 0.08, 1.95, 2.24, 0.8, str(val), 26, True, WHITE, PP_ALIGN.CENTER)
-    _tb(s, 0.5, 3.45, 12.4, 0.4, "F5 — cards fade. Agli slides pe graph + right side pe explain / report.", 14, False, INK)
+    _tb(s, 0.5, 3.45, 12.4, 0.4, "F5 — cards fade. Next slides: graph + explanation / report on the right.", 14, False, INK)
     _fade_transition(s)
     _appear_shapes(s, skip=1)
 
@@ -535,9 +535,9 @@ def build_animated_pptx(
         s, 0.3, 5.5, 12.7, 1.7,
         "Read together",
         [
-            "Left = mix (kahan problem hai). Right = time (kab spike aaya).",
-            "Agar spike + fibre same week hon = last-mile incident, sirf volume nahi.",
-            "PowerPoint mein chart pe right-click → Animate for extra build.",
+            "Left = mix (where the problem is). Right = time (when the spike hit).",
+            "If spike and fibre land in the same week, treat as a last-mile incident, not volume only.",
+            "In PowerPoint, right-click the chart → Animate for an extra build.",
         ],
     )
     _fade_transition(s)
@@ -561,7 +561,7 @@ def build_animated_pptx(
     if d_vals:
         actions.append("3. Spike days ka RCA + repeat site list next review tak.")
     actions.append("4. SLA >24h tickets ko named owner + daily follow-up.")
-    _tb(s, 0.7, 3.2, 12, 2.4, "\n".join(actions or ["Data ke hisaab se next review pe actions lock karo."]), 18, False, WHITE)
+    _tb(s, 0.7, 3.2, 12, 2.4, "\n".join(actions or ["Lock actions for the next review from this data."]), 18, False, WHITE)
     _tb(s, 0.7, 6.5, 12, 0.3, "F5 Slideshow  •  Confidential  |  XTRNATE NOC", 12, False, MUTED)
     _fade_transition(s)
 

@@ -123,7 +123,7 @@ def _parse_sa_json(raw):
         except json.JSONDecodeError:
             continue
     raise ValueError(
-        "JSON parse fail. FIREBASE_SA_JSON mein poori JSON file paste karo."
+        "JSON parse failed. Paste the full JSON file into FIREBASE_SA_JSON."
     )
 
 
@@ -142,15 +142,15 @@ def _load_sa_info():
     elif "google_service_account" in st.secrets:
         info = dict(st.secrets["google_service_account"])
     else:
-        raise KeyError("Secrets me Firebase service account credentials nahi mile.")
+        raise KeyError("Firebase service-account credentials not found in secrets.")
 
     if not isinstance(info, dict):
-        raise ValueError("Service account object dict format mein match nahi hua.")
+        raise ValueError("Service account object did not match dict format.")
 
     info = {str(k): info[k] for k in info}
     
     if "private_key" not in info:
-        raise ValueError("JSON mein private_key field missing hai.")
+        raise ValueError("JSON is missing the private_key field.")
 
     info["private_key"] = _fix_private_key(info["private_key"])
     info["type"] = info.get("type") or "service_account"
@@ -175,7 +175,7 @@ def get_db():
             raise ValueError(
                 "Firebase key load fail. PEM starts_with_BEGIN="
                 f"{pk.strip().startswith('-----BEGIN')} len={len(pk)}. "
-                "Secrets box poora saaf karke sirf FIREBASE_SA_JSON = \"\"\" {json} \"\"\" paste karo. "
+                "Clear the secrets box and paste only FIREBASE_SA_JSON = \"\"\" {json} \"\"\"."
                 f"Detail: {e}"
             ) from e
             

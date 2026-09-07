@@ -35,7 +35,7 @@ if 'status' in open_df.columns:
     open_calls = open_df[mask].copy()
     if open_calls.empty:
         open_calls = open_df.copy()
-        st.info("Status filter mein Assign to FE / Call on Hold nahi mila, isliye saare open tickets dikha raha hoon.")
+        st.info("Assign to FE / Call on Hold not found in the status filter, so all open tickets are shown.")
 else:
     open_calls = open_df.copy()
 
@@ -123,10 +123,10 @@ with col2:
 # ========== SITE HISTORY (ONLY SELECTED SITE) ==========
 st.markdown("---")
 st.subheader("📜 Site History — Selected Site Only")
-st.caption("⚠️ Sirf **selected Site Code** ka history dikhega. Overall nahi.")
+st.caption("⚠️ History is only for the **selected Site Code**, not overall.")
 
 if 'site_code' not in filtered.columns or filtered.empty:
-    st.info("Koi open call nahi hai ya site_code missing hai.")
+    st.info("No open calls, or site_code is missing.")
 else:
     sites = sorted(filtered['site_code'].dropna().unique().tolist())
     selected_site = st.selectbox("Select ONE Site Code", sites, key="open_site_history")
@@ -146,7 +146,7 @@ else:
         hist = closed_df[closed_df['site_code'] == selected_site].copy()
 
         if hist.empty:
-            st.info(f"Site **{selected_site}** pe koi previous closed ticket nahi mila.")
+            st.info(f"Site **{selected_site}** has no previous closed ticket.")
         else:
             if 'submitted_time' in hist.columns:
                 hist = hist.sort_values('submitted_time', ascending=False)
@@ -183,7 +183,7 @@ else:
                 key=f"open_calls_hist_{selected_site}",
             )
     else:
-        st.warning("Closed data nahi hai. History ke liye Tickets Excel (Auto Split) upload karo.")
+        st.warning("Closed data is missing. Upload Tickets Excel (Auto Split) for history.")
 
 # ========== DOWNLOAD ==========
 st.markdown("---")

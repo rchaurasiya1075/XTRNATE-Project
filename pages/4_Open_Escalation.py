@@ -92,7 +92,7 @@ st.dataframe(styled.style.apply(highlight_level, axis=1), use_container_width=Tr
 # ===================== AUTO HISTORY ALL OPEN SITES =====================
 st.markdown("---")
 st.subheader("📊 All Open Sites — Auto History (1M / 3M / 4M / 6M)")
-st.caption("Har open ticket ke site code ka history automatic. Select karne ki zaroorat nahi.")
+st.caption("History for every open ticket site code loads automatically. No extra select needed.")
 
 hist_src = pd.DataFrame()
 if closed_df is not None and not closed_df.empty:
@@ -103,7 +103,7 @@ elif raw_df is not None and not raw_df.empty:
 if "site_code" not in filtered.columns:
     st.warning("site_code missing in open tickets.")
 elif hist_src.empty or "site_code" not in hist_src.columns:
-    st.warning("Closed / history data nahi mila. Auto history ke liye closed tickets load hone chahiye.")
+    st.warning("Closed / history data not found. Closed tickets must be loaded for auto history.")
 else:
     if "submitted_time" in hist_src.columns:
         hist_src["submitted_time"] = pd.to_datetime(hist_src["submitted_time"], errors="coerce")
@@ -172,7 +172,7 @@ else:
 # ===================== SITE HISTORY FOR OPEN TICKETS =====================
 st.markdown("---")
 st.subheader("📜 Site History for Open Tickets")
-st.caption("Kisi bhi Open ticket ka Site Code select karo → us site pe pehle kab-kab down hua, kitne din me resolve hua, Last Enclosure reason kya tha — poora history.")
+st.caption("Pick any open ticket site code → prior downs, days to resolve, last enclosure reason — full history.")
 
 if 'site_code' not in filtered.columns:
     st.warning("site_code column missing in open data.")
@@ -196,7 +196,7 @@ else:
             history = closed_df[closed_df['site_code'] == selected_open_site].copy()
 
             if history.empty:
-                st.info("Is site pe pehle koi closed ticket nahi mila (ya Closed data upload nahi hua).")
+                st.info("No prior closed ticket for this site (or closed data is not uploaded).")
             else:
                 history = history.sort_values('submitted_time', ascending=False) if 'submitted_time' in history.columns else history
 
@@ -241,7 +241,7 @@ else:
                     key=f"open_hist_{selected_open_site}",
                 )
         else:
-            st.warning("Closed tickets data nahi hai. Site history ke liye Closed Tickets Excel bhi upload karo.")
+            st.warning("Closed tickets data is missing. Upload Closed Tickets Excel for site history.")
 
 # ===================== CHART =====================
 st.markdown("---")

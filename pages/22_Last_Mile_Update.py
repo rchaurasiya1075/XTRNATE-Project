@@ -26,7 +26,7 @@ st.set_page_config(page_title="Last Mile Update | XTRNATE", page_icon="📍", la
 ensure_ready()
 
 st.title("Last Mile / LC Contact Update")
-st.caption("Old last mile + LC dikhega • naya data save = Firebase + Google Sheet mein nayi row")
+st.caption("Existing last mile + LC is shown • save writes a new row to Firebase + Google Sheet")
 
 
 def _col(df, *names):
@@ -117,7 +117,7 @@ except Exception:
 q = st.text_input("Site code", placeholder="XTNCHG364").strip().upper()
 
 if not q:
-    st.info("Site code likho — old last mile, LC, branch contact dikhega.")
+    st.info("Enter a site code — existing last mile, LC and branch contact appear.")
 else:
     mhit = master[master["site_code"] == q]
     chit = calls[calls["site_code"] == q] if "site_code" in calls.columns else calls.iloc[0:0]
@@ -176,7 +176,7 @@ else:
 
     if st.button("Save update (Firebase + Google Sheet new row)", type="primary"):
         if not new_isp and not new_lc and not new_ph and not new_media:
-            st.warning("Kam se kam naya ISP / LC name / number dalo.")
+            st.warning("Enter at least a new ISP / LC name / number.")
         else:
             payload = {
                 "site_code": q,
@@ -207,7 +207,7 @@ else:
                 except Exception as e:
                     st.error(f"Firebase save fail: {e}")
             else:
-                st.error("Firebase secrets nahi mile — pehle secrets lagao.")
+                st.error("Firebase secrets not found — add secrets first.")
             try:
                 append_last_mile_log([
                     _now(), q, bank, branch, state,
@@ -220,14 +220,14 @@ else:
             if fb_ok:
                 st.success("Firebase save ho gaya.")
             if sh_ok:
-                st.success("Google Sheet tab **LastMile_Updates** mein nayi row add ho gayi.")
+                st.success("A new row was added to Google Sheet tab **LastMile_Updates**.")
             elif sh_err:
                 try:
                     mail = sa_email()
                 except Exception:
                     mail = "(service account email secrets se)"
                 st.warning(
-                    "Sheet write fail. Is sheet ko service account ko **Editor** share karo:\n\n"
+                    "Sheet write failed. Share this sheet with the service account as **Editor**:\n\n"
                     f"{mail}\n\n"
                     f"Sheet: https://docs.google.com/spreadsheets/d/{MASTER_ID}\n\n"
                     f"Error: {sh_err}"
@@ -254,8 +254,8 @@ if firebase_ready():
                 key="lm_hist_dl",
             )
         else:
-            st.caption("Abhi koi update save nahi.")
+            st.caption("No update saved yet.")
     except Exception as e:
         st.info(f"History read: {e}")
 else:
-    st.caption("Firebase ready hone ke baad history yahan dikhegi.")
+    st.caption("History will appear here once Firebase is ready.")

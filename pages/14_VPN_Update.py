@@ -165,7 +165,7 @@ for part in (closed, opened, raw):
     if part is not None and not getattr(part, "empty", True):
         frames.append(part)
 if not frames:
-    st.warning("Data nahi mila. Home / Upload se sheet load karo.")
+    st.warning("No data. Load the sheet from Home / Upload.")
     st.stop()
 
 all_df = pd.concat(frames, ignore_index=True)
@@ -174,7 +174,7 @@ if "ticket_id" in all_df.columns:
     all_df = all_df.drop_duplicates(subset=["ticket_id"], keep="first")
 
 if "submitted_time" not in all_df.columns:
-    st.error("Submitted Time nahi mili.")
+    st.error("Submitted Time not found.")
     st.stop()
 
 all_df = all_df.copy()
@@ -233,7 +233,7 @@ with m2:
     st.metric("Branch open (Total − HO)", branch_sites)
 with m3:
     backup_on = st.number_input(
-        "Branch pe backup chal raha (manual)",
+        "Backup running at branch (manual)",
         min_value=0,
         max_value=max(branch_sites, 0),
         value=max(0, branch_sites - 1) if branch_sites else 0,
@@ -278,7 +278,7 @@ if png:
         file_name=f"XTRANET_UPDATE_{ref_day}.png",
         mime="image/png",
     )
-    st.image(png, caption="Yahi size / text screenshot jaisa hai")
+    st.image(png, caption="Same size / text as the screenshot")
 
 st.markdown("---")
 tab_labels = [

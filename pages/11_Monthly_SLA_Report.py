@@ -20,7 +20,7 @@ ensure_ready()
 
 st.title("📅 Monthly SLA Report")
 st.caption(
-    "Daily resolve counts by time bucket • Owner ke saare ISP • Weekend & holiday logic"
+    "Daily resolve counts by time bucket • all ISPs under Owner • weekend & holiday logic"
 )
 
 if st.session_state.get("closed_df") is None:
@@ -30,7 +30,7 @@ if st.session_state.get("closed_df") is None:
 closed_df = st.session_state.get("closed_df")
 if closed_df is None or closed_df.empty:
     st.warning(
-        "Closed data nahi mila. Sheet share check karo ya Home se Refresh dabao."
+        "Closed data not found. Check sheet sharing or click Refresh on Home."
     )
     st.stop()
 
@@ -95,7 +95,7 @@ def is_holiday(d: date) -> bool:
 
 months = sorted(df["resolved_month"].dropna().unique().tolist(), reverse=True)
 if not months:
-    st.info("Koi valid resolved date nahi mili.")
+    st.info("No valid resolved date found.")
     st.stop()
 
 selected_month = st.selectbox("Select Month (separate monthly sheet)", months)
@@ -456,7 +456,7 @@ fig = px.bar(
     text="Count",
     color="Count",
     color_continuous_scale="Purples",
-    title="ISP (<24h / >24h) — Owner ke saare names",
+    title="ISP (<24h / >24h) — all Owner names",
 )
 fig.update_layout(template="plotly_dark", height=360)
 st.plotly_chart(fig, use_container_width=True)

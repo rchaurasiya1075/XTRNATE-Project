@@ -6,7 +6,7 @@ import io
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
-from utils.site_search import render_site_history_panel
+from utils.site_search import render_site_history_panel, render_last_month_down_categories
 from utils.bootstrap import ensure_ready
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
@@ -14,7 +14,7 @@ from utils.report_download import download_pack
 st.set_page_config(page_title="Site Search | XTRNATE", page_icon="🔍", layout="wide")
 ensure_ready()
 
-# Circuit ID page wala exact CSS theme & styles
+# Same CSS theme as Circuit ID
 st.markdown("""
 <style>
 @media (max-width: 768px) {
@@ -48,7 +48,7 @@ st.markdown("""
 st.markdown("""
 <div class="ckt-hero">
   <h1>🔍 Site Code Search</h1>
-  <p>Koi bhi Site Code likho &nbsp;•&nbsp; Kab-kab down hua, reason, resolution — pura history breakdown</p>
+  <p>Look up any site code &nbsp;•&nbsp; Down history, reason, resolution — full breakdown</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -62,7 +62,10 @@ if 'selected_isp' not in st.session_state:
 
 closed = st.session_state.get('closed_df')
 if closed is not None and not closed.empty:
-    st.caption(f"Total History Records Loaded: **{len(closed)}** tickets")
+    st.caption(f"Total history records loaded: **{len(closed)}** tickets")
+
+render_last_month_down_categories()
+st.markdown("---")
 
 q = st.text_input(
     "Search Site Code",
@@ -106,7 +109,7 @@ if q and q.strip():
                 key=f"site_hist_{site_code}",
             )
 else:
-    st.info("Upar box mein Site Code type karo. Example: `XTNSLN354`")
+    st.info("Type a site code in the box above. Example: `XTNSLN354`")
 
 # Quick suggestions from data formatted in CKT Dark Card style
 if closed is not None and not closed.empty and 'site_code' in closed.columns:
