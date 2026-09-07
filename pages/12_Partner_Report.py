@@ -13,6 +13,7 @@ from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 from utils.anim_deck import build_animated_pptx
+from utils.data_source import save_google, source_status
 
 st.set_page_config(
     page_title="Partner Report | XTRNATE", page_icon="📄", layout="wide"
@@ -287,8 +288,10 @@ st.title("📄 Partner Performance Report")
 st.caption("Date range • tickets for every option under the 4 points • Repeat sites + detail • Vendor Change separate")
 
 ensure_ready()
+st.caption(source_status())
 
 with st.expander("🔄 Reload Data from Google Sheet"):
+    st.caption("This updates the Google Sheet slot only. If reports are on Manual Excel, they stay on the upload.")
     if st.button("Reload DATA tab", type="primary"):
         try:
             sid = extract_sheet_id(DATA_URL)
@@ -296,9 +299,8 @@ with st.expander("🔄 Reload Data from Google Sheet"):
             processed = process_closed_tickets(raw)
             if "ticket_id" in processed.columns:
                 processed = processed.drop_duplicates(subset=["ticket_id"], keep="first")
-            st.session_state.raw_tickets_df = processed
-            st.session_state.closed_df = processed
-            st.success(f"Loaded {len(processed)} unique incidents")
+            save_google(processed, st.session_state.get("open_df"), processed, note="Partner DATA tab")
+            st.success(f"Google slot loaded {len(processed)} unique incidents. {source_status()}")
             st.rerun()
         except Exception as e:
             st.error(str(e))

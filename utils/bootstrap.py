@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from utils.auto_load import auto_load_tickets
+from utils.data_source import init_data_source, source_status
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -84,6 +85,10 @@ def show_last_update():
             extra.append(site)
         tail = (" • " + " • ".join(extra)) if extra else ""
         msg = f"Last update = Last TT raise: {stamp}{tail}  ({ago})"
+    try:
+        msg = f"{msg}  •  {source_status()}"
+    except Exception:
+        pass
 
     st.markdown(
         f"""
@@ -228,6 +233,7 @@ def render_isp_multiselect(location="main", key="isp_multi_main"):
 
 
 def ensure_ready():
+    init_data_source()
     if "selected_isp" not in st.session_state or not st.session_state.selected_isp:
         st.session_state.selected_isp = "ALL"
     if "selected_isps" not in st.session_state:
@@ -240,4 +246,5 @@ def ensure_ready():
     with st.sidebar:
         st.markdown("**Active ISP / Partner**")
         st.caption(isp_label() + "  •  Change: multi-select at the top of the page")
+        st.caption(source_status())
     return isp_label()

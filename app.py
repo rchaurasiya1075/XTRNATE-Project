@@ -3,9 +3,10 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(__file__))
+from utils.data_source import init_data_source
 
 st.set_page_config(
-    page_title="XTRNATE Project | NOC Command Center",
+    page_title="Xtranet NOC | Command Center",
     page_icon="📡",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -107,6 +108,7 @@ if "open_df" not in st.session_state:
     st.session_state.open_df = None
 if "site_master" not in st.session_state:
     st.session_state.site_master = None
+init_data_source()
 
 home = st.Page("home_page.py", title="Home", icon="📡", default=True)
 

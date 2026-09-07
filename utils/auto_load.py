@@ -4,6 +4,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from utils.google_sheets import load_sheet_as_csv, extract_sheet_id
 from utils.data_processing import process_closed_tickets, process_open_tickets
+from utils.data_source import init_data_source, save_google
 
 DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I/edit?usp=sharing"
 DEFAULT_GID = 1980854633
@@ -17,6 +18,7 @@ def _mark_updated():
     st.session_state.data_last_updated = datetime.now(IST)
 
 def auto_load_tickets(force: bool = False):
+    init_data_source()
     if not force and st.session_state.get('closed_df') is not None:
         if 'data_last_updated' not in st.session_state:
             _mark_updated()
@@ -49,18 +51,24 @@ def auto_load_tickets(force: bool = False):
                 open_part = process_open_tickets(open_part)
                 if 'ticket_id' in open_part.columns:
                     open_part = open_part.drop_duplicates(subset=['ticket_id'], keep='first')
-            st.session_state.closed_df = closed_part if not closed_part.empty else None
-            st.session_state.open_df = open_part if not open_part.empty else None
-            st.session_state.raw_tickets_df = processed
             st.session_state.data_auto_loaded = True
+            save_google(
+                closed_part if not closed_part.empty else None,
+                open_part if not open_part.empty else None,
+                processed,
+                note="Google Sheet",
+            )
             _mark_updated()
+            src = st.session_state.get("data_source")
+            if src == "upload":
+                return True, f"Google updated (Closed {len(closed_part)} | Open {len(open_part)}) — reports still use Manual Excel"
             return True, f"Closed: {len(closed_part)} | Open: {len(open_part)}"
         else:
-            st.session_state.closed_df = processed
-            st.session_state.open_df = None
-            st.session_state.raw_tickets_df = processed
+            save_google(processed, None, processed, note="Google Sheet")
             st.session_state.data_auto_loaded = True
             _mark_updated()
+            if st.session_state.get("data_source") == "upload":
+                return True, f"Google updated (Closed {len(processed)}) — reports still use Manual Excel"
             return True, f"Closed: {len(processed)}"
     except Exception as e:
         return False, str(e)

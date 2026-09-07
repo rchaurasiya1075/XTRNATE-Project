@@ -3,6 +3,7 @@ from utils.auto_load import auto_load_tickets
 from utils.site_search import render_site_history_panel
 from utils.bootstrap import show_last_update, render_isp_multiselect, isp_label, apply_isp_filter
 from utils.site_pack import render_multi_site_pack
+from utils.data_source import init_data_source, render_source_bar
 
 if "selected_isp" not in st.session_state:
     st.session_state.selected_isp = "ALL"
@@ -14,6 +15,8 @@ if "open_df" not in st.session_state:
     st.session_state.open_df = None
 if "site_master" not in st.session_state:
     st.session_state.site_master = None
+
+init_data_source()
 
 if st.session_state.closed_df is None:
     with st.spinner("📡 Fetching Google Sheet data..."):
@@ -27,10 +30,13 @@ show_last_update()
 
 st.markdown("""
 <div class="main-header">
-    <h1>📡 XTRNATE Project :- KD</h1>
-    <p>Hughes NOC • Xtranet Data • Site Search • SLA </p>
+    <h1>📡 Xtranet NOC</h1>
+    <p>Hughes NOC • multi-project reports • Site Search • SLA</p>
 </div>
 """, unsafe_allow_html=True)
+
+render_source_bar()
+st.markdown("---")
 
 st.markdown('<div class="search-card">', unsafe_allow_html=True)
 st.markdown("**🔍 Site Code Quick Search** — type code → full down history + reasons")
