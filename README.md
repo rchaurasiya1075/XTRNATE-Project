@@ -40,7 +40,9 @@ Browser automatically open hoga → `http://localhost:8501`
 3. Select `app.py` as main file
 4. Deploy
 
-## Usage Flow
+## Full workflow document
+
+See **[docs/XTRNATE_FULL_WORKFLOW.md](docs/XTRNATE_FULL_WORKFLOW.md)** — every page, data mode (Google vs Manual Excel), session keys, exports, and utils.
 
 1. Home page pe **HCIN** ya **ONEOTT** select karo
 2. **Upload Data** page pe:
