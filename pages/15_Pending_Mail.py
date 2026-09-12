@@ -8,9 +8,9 @@ import pandas as pd
 import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.bootstrap import ensure_ready, get_selected_isps, isp_label
+from utils.bootstrap import ensure_ready
 from utils.google_sheets import extract_sheet_id
-from utils.data_processing import classify_isp, isp_options
+from utils.data_processing import classify_isp
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
@@ -135,14 +135,14 @@ def build_html(partner, brand, reason_tbl, loc_tbl, rows):
 
 
 st.title("📧 Pending Call Mail")
-st.caption("Data from the OPEN CALLS sheet only • every ISP under Owner • other pages unchanged")
+st.caption("OPEN CALLS sheet • pick one ISP / Owner • one mail per partner (not combined)")
 
 if st.button("🔄 Reload mail sheet"):
     load_mail_sheet.clear()
     st.rerun()
 
 try:
-    with st.spinner("OPEN CALLS sheet load ho rahi hai..."):
+    with st.spinner("Loading OPEN CALLS sheet…"):
         df = load_mail_sheet()
 except Exception as e:
     st.error(str(e))
@@ -153,22 +153,55 @@ if df.empty:
     st.warning("No tickets on this sheet tab.")
     st.stop()
 
-df["_partner"] = df.get("Owner", "").apply(partner_of)
-tmp = df.copy()
-tmp["isp"] = tmp["_partner"]
-opts = isp_options(tmp, add_all=False)
-if not opts:
-    opts = [x for x in tmp["_partner"].dropna().astype(str).unique() if x not in ("UNKNOWN", "OTHER", "")]
-if not opts:
-    opts = ["ONEOTT", "HCIN"]
-
-picked = [x for x in get_selected_isps() if x in opts]
-if not picked:
-    picked = list(opts) if isp_label() in ("ALL", "NONE") else []
-if not picked:
-    st.warning("Selected ISP is not on the pending-mail sheet. Tick an ISP at the top / sidebar.")
+owner_col = None
+for c in df.columns:
+    if str(c).strip().lower() == "owner":
+        owner_col = c
+        break
+if owner_col is None:
+    st.error("Owner column not found on the OPEN CALLS sheet.")
     st.stop()
-st.caption("Mail for the selected ISP. Multiple select shows a tab per ISP.")
+
+df["_partner"] = df[owner_col].apply(partner_of)
+counts = df["_partner"].astype(str).value_counts()
+mail_isps = [
+    n for n in counts.index.tolist()
+    if str(n).strip() and str(n).upper() not in ("UNKNOWN", "OTHER", "NAN", "NONE", "")
+]
+if not mail_isps:
+    mail_isps = ["ONEOTT", "HCIN"]
+
+st.markdown("### Select ISP / Owner for this mail")
+st.caption("Each owner gets a separate mail. Tick one name — HCIN and ONEOTT are never merged.")
+
+n_cols = min(4, max(2, len(mail_isps)))
+btns = st.columns(n_cols)
+if "mail_isp" not in st.session_state or st.session_state.mail_isp not in mail_isps:
+    st.session_state.mail_isp = mail_isps[0]
+
+for i, name in enumerate(mail_isps):
+    n = int(counts.get(name, 0))
+    with btns[i % n_cols]:
+        active = st.session_state.mail_isp == name
+        if st.button(
+            f"{name}  ({n})",
+            key=f"mail_isp_btn_{name}",
+            type="primary" if active else "secondary",
+            use_container_width=True,
+        ):
+            st.session_state.mail_isp = name
+            st.rerun()
+
+picked = st.session_state.mail_isp
+st.success(f"Mail for **{picked}** only  •  {int(counts.get(picked, 0))} tickets")
+
+view = st.radio(
+    "View",
+    ["This ISP only", "Separate tab per ISP"],
+    horizontal=True,
+    key="mail_view_mode",
+    help="Use This ISP only when you copy-paste one owner mail. Tabs keep every owner separate — never one combined mail.",
+)
 
 
 def render_mail(partner, src):
@@ -213,7 +246,7 @@ def render_mail(partner, src):
             "State": r.get("State", ""),
             "Submitted Time": r.get("Submitted Time", ""),
             "CurrentStatus": r.get("CurrentStatus", ""),
-            "Owner": r.get("Owner", brand),
+            "Owner": r.get(owner_col, brand),
             "Remarks": r.get("Remarks", ""),
             "Branch Person Name": r.get(bname, "") if bname else "",
             "Branch Person Contact Number": r.get(bph, "") if bph else "",
@@ -272,11 +305,11 @@ def render_mail(partner, src):
     )
 
 
-if len(picked) == 1:
-    render_mail(picked[0], df)
+if view == "This ISP only":
+    render_mail(picked, df)
 else:
-    tabs = st.tabs(picked)
-    for tab, partner in zip(tabs, picked):
+    tabs = st.tabs([f"{n} ({int(counts.get(n, 0))})" for n in mail_isps])
+    for tab, partner in zip(tabs, mail_isps):
         with tab:
             render_mail(partner, df)
 
