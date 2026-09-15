@@ -92,65 +92,54 @@ with s1:
 with s2:
     go = st.button("Search", type="primary", use_container_width=True, key="page_site_go")
 
+
+# --- HELPER FUNCTION: SITE SEARCH KO MONTH WISE FILTER KARNE KE LIYE ---
+def display_filtered_site_history(site_code):
+    site_code = site_code.strip().upper()
+    
+    # Month Filter Options
+    m_opt = st.selectbox(
+        "Select Time Period (Months):",
+        ["Overall", "1 Month", "2 Months", "3 Months", "4 Months", "5 Months", "6 Months", "7 Months", "8 Months", "9 Months"],
+        key=f"site_month_filter_{site_code}"
+    )
+
+    if m_opt == "Overall":
+        render_site_history_panel(site_code)
+    else:
+        num_months = int(m_opt.split()[0])
+        
+        # Original dataframe se temporary filter lagayenge (Last N Months)
+        if closed is not None and not closed.empty and "created_at" in closed.columns and "site_code" in closed.columns:
+            import pandas as pd
+            temp_df = closed.copy()
+            temp_df["created_at"] = pd.to_datetime(temp_df["created_at"], errors="coerce")
+            max_dt = temp_df["created_at"].max()
+            
+            if pd.notna(max_dt):
+                cutoff_date = max_dt - pd.DateOffset(months=num_months)
+                # Save current state, replace with filtered dataframe, run panel, then restore
+                original_closed = st.session_state.get("closed_df")
+                filtered_df = temp_df[temp_df["created_at"] >= cutoff_date]
+                st.session_state["closed_df"] = filtered_df
+                
+                render_site_history_panel(site_code)
+                
+                # Restore original data
+                st.session_state["closed_df"] = original_closed
+            else:
+                render_site_history_panel(site_code)
+        else:
+            render_site_history_panel(site_code)
+
+
 if q and (go or q.strip()):
-    render_site_history_panel(q.strip().upper())
+    display_filtered_site_history(q)
 else:
     st.caption("Type a site code to see down history, reasons and resolution.")
 
-# --- NEW FUNCTION FOR LAST 2 MONTHS FILTER ---
-def render_last_2_months_down_categories(df, selected_count):
-    """
-    Last 2 Month me site down count ke hisab se filter karke sites display karta hai.
-    """
-    if df is None or df.empty or "site_code" not in df.columns or "created_at" not in df.columns:
-        st.info("No data available for last 2 months analysis.")
-        return
-
-    import pandas as pd
-    
-    # Date processing & last 60 days filtering
-    temp_df = df.copy()
-    temp_df["created_at"] = pd.to_datetime(temp_df["created_at"], errors="coerce")
-    max_date = temp_df["created_at"].max()
-    
-    if pd.isna(max_date):
-        st.warning("Date column contains invalid data.")
-        return
-        
-    two_months_ago = max_date - pd.Timedelta(days=60)
-    filtered = temp_df[temp_df["created_at"] >= two_months_ago]
-
-    # Site wise down count
-    counts = filtered["site_code"].astype(str).str.upper().value_counts()
-
-    # Selected option ke basis par filter
-    if selected_count == "Overall":
-        result = counts
-    else:
-        target_val = int(selected_count)
-        result = counts[counts == target_val]
-
-    st.markdown(f"**Found {len(result)} sites** with **{selected_count}** down(s) in last 60 days:")
-    
-    if not result.empty:
-        formatted_list = [f"**{site}** ({cnt})" for site, cnt in result.items()]
-        st.write(" · ".join(formatted_list))
-    else:
-        st.info("No sites matched this criteria.")
-
-
-# --- EXPANDERS ---
 with st.expander("Last 30 days — 3 / 5 / 6 / 7+ downs", expanded=False):
     render_last_month_down_categories()
-
-# --- ADDED: LAST 2 MONTHS DOWN ANALYSIS EXPANDER ---
-with st.expander("Last 2 Months — Down Count Filter (1 / 3 / 5 / 6 / Overall)", expanded=False):
-    sel_cnt = st.selectbox(
-        "Select Down Frequency Filter:",
-        options=["1", "3", "5", "6", "Overall"],
-        key="last_2m_filter"
-    )
-    render_last_2_months_down_categories(closed, sel_cnt)
 
 if closed is not None and not closed.empty and "site_code" in closed.columns:
     with st.expander("Frequent sites in this source", expanded=False):
@@ -158,4 +147,4 @@ if closed is not None and not closed.empty and "site_code" in closed.columns:
         pick = st.selectbox("Jump to site", ["—"] + list(top.index), key="freq_jump")
         st.caption("  ·  ".join(f"{k} ({int(v)})" for k, v in top.items()))
         if pick and pick != "—":
-            render_site_history_panel(pick)
+            display_filtered_site_history(pick)
