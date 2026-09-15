@@ -110,17 +110,17 @@ def display_filtered_site_history(site_code):
         num_months = int(m_opt.split()[0])
         
         # Original dataframe se temporary filter lagayenge (Last N Months)
-        if closed is not None and not closed.empty and "created_at" in closed.columns and "site_code" in closed.columns:
+        if closed is not None and not closed.empty and "submitted_time" in closed.columns and "site_code" in closed.columns:
             import pandas as pd
             temp_df = closed.copy()
-            temp_df["created_at"] = pd.to_datetime(temp_df["created_at"], errors="coerce")
-            max_dt = temp_df["created_at"].max()
+            temp_df["submitted_time"] = pd.to_datetime(temp_df["submitted_time"], errors="coerce")
+            max_dt = temp_df["submitted_time"].max()
             
             if pd.notna(max_dt):
                 cutoff_date = max_dt - pd.DateOffset(months=num_months)
                 # Save current state, replace with filtered dataframe, run panel, then restore
                 original_closed = st.session_state.get("closed_df")
-                filtered_df = temp_df[temp_df["created_at"] >= cutoff_date]
+                filtered_df = temp_df[temp_df["submitted_time"] >= cutoff_date]
                 st.session_state["closed_df"] = filtered_df
                 
                 render_site_history_panel(site_code)
