@@ -12,7 +12,11 @@ IST = ZoneInfo("Asia/Kolkata")
 
 @st.cache_data(ttl=300, show_spinner=False)
 def _fetch_raw_sheet(sheet_id: str, gid: int):
-    return load_sheet_as_csv(sheet_id, gid=gid)
+    try:
+        return load_sheet_as_csv(sheet_id, gid=gid)
+    except Exception:
+        import pandas as pd
+        return pd.DataFrame()
 
 def _mark_updated():
     st.session_state.data_last_updated = datetime.now(IST)
@@ -36,11 +40,16 @@ def auto_load_tickets(force: bool = False):
         return False, "Invalid sheet ID"
 
     try:
-        df = _fetch_raw_sheet(sheet_id, DEFAULT_GID)
+        from utils.ticket_sync import history_gid
+        gid = history_gid(st.session_state.get("active_project") or "Xtranet")
+        df = _fetch_raw_sheet(sheet_id, gid)
+        note = f"Google Sheet  •  {st.session_state.get('active_project') or 'Xtranet'}  •  gid {gid}"
         processed = process_closed_tickets(df)
 
         if processed is None or processed.empty:
-            return False, "Empty data from sheet"
+            save_google(None, None, df if df is not None else None, note=note)
+            _mark_updated()
+            return True, f"No tickets on this project tab ({st.session_state.get('active_project')})"
 
         if 'ticket_id' in processed.columns:
             processed = processed.drop_duplicates(subset=['ticket_id'], keep='first')
@@ -63,7 +72,7 @@ def auto_load_tickets(force: bool = False):
                 closed_part if not closed_part.empty else None,
                 open_part if not open_part.empty else None,
                 processed,
-                note="Google Sheet",
+                note=note,
             )
             _mark_updated()
             src = st.session_state.get("data_source")
@@ -71,7 +80,7 @@ def auto_load_tickets(force: bool = False):
                 return True, f"Google updated (Closed {len(closed_part)} | Open {len(open_part)}) — reports still use Manual Excel"
             return True, f"Closed: {len(closed_part)} | Open: {len(open_part)}"
         else:
-            save_google(processed, None, processed, note="Google Sheet")
+            save_google(processed, None, processed, note=note)
             st.session_state.data_auto_loaded = True
             _mark_updated()
             if st.session_state.get("data_source") == "upload":

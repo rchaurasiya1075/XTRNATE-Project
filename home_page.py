@@ -78,6 +78,32 @@ if st.button("🔄 Force Refresh Google Sheet"):
     else:
         st.error(msg)
 
+st.caption(
+    "Xtranet history keeps old rows. Sync adds new Incident IDs from the daily open sheet "
+    "and marks tickets Resolved when they drop off that list. "
+    "Shell / Other: pick the project — data comes from their own tabs (not this daily list)."
+)
+if st.button("➕ Sync daily tickets (add new + mark resolved)", type="primary"):
+    from utils.ticket_sync import sync_daily_tickets
+    st.cache_data.clear()
+    with st.spinner("Comparing daily open sheet with Xtranet history…"):
+        res = sync_daily_tickets()
+    bits = [
+        f"+{res.get('added', 0)} new",
+        f"{res.get('resolved', 0)} marked Resolved",
+        f"daily open {res.get('daily_open', 0)}",
+    ]
+    if res.get("written"):
+        st.success("Xtranet sheet updated  •  " + "  •  ".join(bits))
+        if str(st.session_state.get("active_project") or "").lower() == "xtranet":
+            ok, msg = auto_load_tickets(force=True)
+            if ok:
+                st.caption(msg)
+    else:
+        st.warning("App merged new tickets. Sheet write skipped — " + (res.get("write_error") or "no service account"))
+        st.info("  •  ".join(bits))
+    st.rerun()
+
 if st.session_state.closed_df is not None or st.session_state.open_df is not None:
     st.markdown("### Live Status")
     c1, c2, c3 = st.columns(3)
