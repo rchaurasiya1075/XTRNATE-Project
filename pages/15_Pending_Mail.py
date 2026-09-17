@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from utils.bootstrap import ensure_ready
+from utils.bootstrap import ensure_ready, apply_isp_filter
 from utils.google_sheets import extract_sheet_id
 from utils.data_processing import classify_isp
 from utils.excel_export import excel_bytes
@@ -46,6 +46,78 @@ def load_mail_sheet():
         df = df[df["Incident ID"].astype(str).str.strip().str.len() > 3]
         df = df.drop_duplicates(subset=["Incident ID"], keep="first")
     return df.reset_index(drop=True)
+
+
+def _pick(df, *names):
+    lower = {str(c).strip().lower(): c for c in df.columns}
+    for n in names:
+        if n.lower() in lower:
+            return lower[n.lower()]
+    return None
+
+
+def _aging(hours):
+    try:
+        h = float(hours)
+    except Exception:
+        return ""
+    if h != h:
+        return ""
+    d = int(h // 24)
+    hh = int(h % 24)
+    return f"{d}D {hh}H"
+
+
+def mail_frame_from_project():
+    """Open tickets of the selected project — never mix Xtranet into Shell/Other."""
+    frames = []
+    for key in ("open_df", "raw_tickets_df", "closed_df"):
+        part = st.session_state.get(key)
+        if part is not None and not getattr(part, "empty", True):
+            frames.append(part)
+    if not frames:
+        return pd.DataFrame()
+    df = pd.concat(frames, ignore_index=True)
+    if "ticket_id" in df.columns:
+        df = df.drop_duplicates(subset=["ticket_id"], keep="first")
+    stc = _pick(df, "status", "CurrentStatus")
+    if stc is not None:
+        sl = df[stc].astype(str).str.lower()
+        open_mask = (
+            sl.str.contains("assign to fe", na=False)
+            | sl.str.contains("call on hold", na=False)
+            | sl.str.contains("on hold", na=False)
+        )
+        df = df[open_mask].copy()
+    if df.empty:
+        return pd.DataFrame()
+    out = pd.DataFrame(index=df.index)
+    idc = _pick(df, "ticket_id", "Incident ID")
+    out["Incident ID"] = df[idc] if idc else ""
+    sc = _pick(df, "site_code", "Site Code", "Request Title")
+    out["Site Code"] = df[sc] if sc else ""
+    stt = _pick(df, "state", "State")
+    out["State"] = df[stt] if stt else ""
+    tcol = _pick(df, "submitted_time", "Submitted Time")
+    out["Submitted Time"] = df[tcol] if tcol else ""
+    csc = _pick(df, "status", "CurrentStatus")
+    out["CurrentStatus"] = df[csc] if csc else ""
+    oc = _pick(df, "owner", "Owner")
+    out["Owner"] = df[oc] if oc else ""
+    rcol = _pick(df, "reason", "Remarks", "Last Enclosure Comment(Active)")
+    out["Remarks"] = df[rcol] if rcol else ""
+    cn = _pick(df, "caller_name", "Caller Name")
+    out["Branch Person Name"] = df[cn] if cn else ""
+    out["Branch Person Contact Number"] = ""
+    out["Alternate Number"] = ""
+    oh = _pick(df, "open_hours")
+    out["Down Time Aging"] = df[oh].map(_aging) if oh else ""
+    ecol = _pick(df, "eta", "ETR", "ETA")
+    out["ETR"] = df[ecol] if ecol else ""
+    dcol = _pick(df, "category", "problem_class", "Down Category")
+    out["Down Category"] = df[dcol] if dcol else ""
+    out = out[out["Incident ID"].astype(str).str.strip().str.len() > 3]
+    return out.reset_index(drop=True)
 
 
 def partner_of(owner):
@@ -135,24 +207,30 @@ def build_html(partner, brand, reason_tbl, loc_tbl, rows):
 
 
 st.title("📧 Pending Call Mail")
-st.caption("OPEN CALLS sheet • pick one ISP / Owner • one mail per partner (not combined)")
+st.caption("Selected project only — Shell mail is Shell opens, Xtranet mail is Xtranet opens")
 
-if st.button("🔄 Reload mail sheet"):
+project = st.session_state.get("active_project") or "Xtranet"
+st.success(f"Mail data: **{project}**")
+
+if st.button("🔄 Reload mail data"):
     load_mail_sheet.clear()
     st.rerun()
 
-try:
-    with st.spinner("Loading OPEN CALLS sheet…"):
-        df = load_mail_sheet()
-except Exception as e:
-    st.error(str(e))
-    st.info("Sheet Share → Anyone with the link → Viewer is required.")
+df = pd.DataFrame()
+if str(project).strip().lower() == "xtranet":
+    try:
+        with st.spinner("Loading OPEN CALLS sheet…"):
+            df = load_mail_sheet()
+    except Exception as e:
+        st.caption(f"OPEN CALLS sheet skipped: {e}")
+if df is None or df.empty:
+    df = mail_frame_from_project()
+
+if df is None or df.empty:
+    st.warning(f"No open tickets for **{project}**. Load that project from Home if the tab is empty.")
     st.stop()
 
-if df.empty:
-    st.warning("No tickets on this sheet tab.")
-    st.stop()
-
+df = apply_isp_filter(df)
 owner_col = None
 for c in df.columns:
     if str(c).strip().lower() == "owner":

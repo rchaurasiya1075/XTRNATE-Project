@@ -1,9 +1,9 @@
 import streamlit as st
 from utils.auto_load import auto_load_tickets
 from utils.site_search import render_site_history_panel
-from utils.bootstrap import show_last_update, render_isp_multiselect, isp_label, apply_isp_filter
+from utils.bootstrap import show_last_update, render_isp_multiselect, render_period_filter, isp_label, apply_isp_filter
 from utils.site_pack import render_multi_site_pack
-from utils.data_source import init_data_source, render_source_bar
+from utils.data_source import init_data_source, render_source_bar, ensure_project_loaded
 
 if "selected_isp" not in st.session_state:
     st.session_state.selected_isp = "ALL"
@@ -17,6 +17,7 @@ if "site_master" not in st.session_state:
     st.session_state.site_master = None
 
 init_data_source()
+ensure_project_loaded()
 
 if st.session_state.closed_df is None:
     with st.spinner("📡 Fetching Google Sheet data..."):
@@ -68,11 +69,14 @@ st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("### ISP / Partner filter")
 st.caption("Select one or more ISPs — every page shows only the selected partners. New ISPs from the sheet appear automatically.")
 render_isp_multiselect(location="main", key="isp_multi_main")
+st.markdown("### Month / date")
+render_period_filter()
 
 if st.button("🔄 Force Refresh Google Sheet"):
     st.cache_data.clear()
     ok, msg = auto_load_tickets(force=True)
     if ok:
+        st.session_state._view_project = st.session_state.active_project
         st.success(f"Refreshed: {msg}")
         st.rerun()
     else:

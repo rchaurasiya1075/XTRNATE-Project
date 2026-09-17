@@ -175,7 +175,26 @@ def set_project(name: str):
     if name not in st.session_state.projects:
         st.session_state.projects.append(name)
     st.session_state.active_project = name
+    st.session_state._view_project = None
     apply_active()
+
+
+def ensure_project_loaded():
+    """Every page: live frames must be the selected project, not leftover Xtranet."""
+    init_data_source()
+    apply_active()
+    proj = st.session_state.active_project
+    src = st.session_state.data_source
+    if src != "google":
+        st.session_state._view_project = proj
+        return
+    already = st.session_state.get("_view_project")
+    has = st.session_state.get("closed_df") is not None or st.session_state.get("open_df") is not None
+    if already == proj and has:
+        return
+    from utils.auto_load import auto_load_tickets
+    auto_load_tickets(force=True)
+    st.session_state._view_project = proj
 
 
 def source_status() -> str:
@@ -216,7 +235,7 @@ def render_source_bar():
     with r1:
         opts = st.session_state.projects
         idx = opts.index(project) if project in opts else 0
-        picked = st.selectbox("Client / project", opts, index=idx, key="proj_select")
+        picked = st.selectbox("Client / project", opts, index=idx)
         if picked != project:
             set_project(picked)
             st.rerun()

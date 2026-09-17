@@ -1,10 +1,10 @@
 """Call at top of every page: ensure data + ISP ready + last TT raise banner."""
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 from utils.auto_load import auto_load_tickets
-from utils.data_source import init_data_source, source_status
+from utils.data_source import init_data_source, source_status, set_project, ensure_project_loaded
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -158,15 +158,108 @@ def isp_label(selected=None):
     return " + ".join(selected)
 
 
+def apply_period_filter(df):
+    """Last 1–7 months or custom From–To on submitted_time. Default = all data."""
+    if df is None or getattr(df, "empty", True):
+        return df
+    mode = st.session_state.get("period_mode") or "All time"
+    if mode == "All time":
+        return df
+    col = None
+    for c in ("submitted_time", "Submitted Time", "resolved_time"):
+        if c in df.columns:
+            col = c
+            break
+    if col is None:
+        return df
+    ts = pd.to_datetime(df[col], errors="coerce")
+    if mode == "Custom":
+        d0 = st.session_state.get("period_from")
+        d1 = st.session_state.get("period_to")
+        if not d0 or not d1:
+            return df
+        start = pd.Timestamp(d0)
+        end = pd.Timestamp(d1) + pd.Timedelta(days=1)
+        return df.loc[ts.notna() & (ts >= start) & (ts < end)].copy()
+    months = int(st.session_state.get("period_months") or 0)
+    if months <= 0:
+        return df
+    cutoff = pd.Timestamp(datetime.now(IST).replace(tzinfo=None)) - pd.DateOffset(months=months)
+    return df.loc[ts.notna() & (ts >= cutoff)].copy()
+
+
 def apply_isp_filter(df):
     from utils.data_processing import filter_by_isps
     if df is None:
         return df
     picked = get_selected_isps()
     opts = available_isps()
-    if st.session_state.get("_isp_all_mode") or (picked and set(picked) >= set(opts)):
-        return df
-    return filter_by_isps(df, picked)
+    out = df
+    if not (st.session_state.get("_isp_all_mode") or (picked and set(picked) >= set(opts))):
+        out = filter_by_isps(df, picked)
+    return apply_period_filter(out)
+
+
+def render_project_pick():
+    """Page-level project switch — VPN / Mail / Report use this, not leftover Xtranet."""
+    init_data_source()
+    opts = list(st.session_state.projects)
+    cur = st.session_state.active_project
+    if cur not in opts:
+        opts = [cur] + opts
+    idx = opts.index(cur) if cur in opts else 0
+    picked = st.selectbox("Project data", opts, index=idx)
+    if picked != cur:
+        set_project(picked)
+        if st.session_state.get("data_source") != "upload":
+            auto_load_tickets(force=True)
+            st.session_state._view_project = picked
+        st.rerun()
+    st.caption(f"This page uses **{picked}** only.")
+
+
+def render_period_filter():
+    init_data_source()
+    if "period_mode" not in st.session_state:
+        st.session_state.period_mode = "All time"
+        st.session_state.period_months = 3
+        st.session_state.period_from = date.today() - timedelta(days=90)
+        st.session_state.period_to = date.today()
+    c1, c2, c3 = st.columns([1.4, 1.4, 2.2])
+    with c1:
+        mode = st.radio(
+            "View period",
+            ["All time", "Last N months", "Custom dates"],
+            horizontal=True,
+            key="period_mode_radio",
+        )
+        st.session_state.period_mode = {"All time": "All time", "Last N months": "Months", "Custom dates": "Custom"}[mode]
+    with c2:
+        n = st.selectbox(
+            "Months",
+            [1, 2, 3, 4, 5, 6, 7],
+            index=2,
+            key="period_months_sel",
+            disabled=(st.session_state.period_mode != "Months"),
+        )
+        st.session_state.period_months = int(n)
+    with c3:
+        disabled = st.session_state.period_mode != "Custom"
+        rng = st.date_input(
+            "From → To",
+            value=(st.session_state.period_from, st.session_state.period_to),
+            key="period_custom_rng",
+            disabled=disabled,
+        )
+        if isinstance(rng, (list, tuple)) and len(rng) == 2 and rng[0] and rng[1]:
+            st.session_state.period_from, st.session_state.period_to = rng[0], rng[1]
+    mode = st.session_state.period_mode
+    if mode == "Months":
+        st.caption(f"Showing last **{st.session_state.period_months}** month(s).")
+    elif mode == "Custom":
+        st.caption(f"Showing **{st.session_state.period_from}** → **{st.session_state.period_to}**.")
+    else:
+        st.caption("Showing all dates.")
 
 
 def render_isp_multiselect(location="main", key="isp_multi_main"):
@@ -238,6 +331,7 @@ def ensure_ready():
         st.session_state.selected_isp = "ALL"
     if "selected_isps" not in st.session_state:
         st.session_state.selected_isps = None
+    ensure_project_loaded()
     if st.session_state.get("closed_df") is None:
         if st.session_state.get("data_source") == "upload":
             from utils.data_source import apply_active
@@ -245,7 +339,10 @@ def ensure_ready():
         else:
             with st.spinner("Data auto-fetch..."):
                 auto_load_tickets()
+            st.session_state._view_project = st.session_state.active_project
     show_last_update()
+    render_project_pick()
+    render_period_filter()
     render_isp_multiselect(location="main", key="isp_multi_main")
     with st.sidebar:
         st.markdown("**Active ISP / Partner**")
