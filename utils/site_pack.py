@@ -437,6 +437,7 @@ def build_pack(codes: list[str]) -> dict:
             "lc_name": _first(lrow, "Branch Person Name", "lc_name") or _first(mrow, "Branch Person Name"),
             "lc_phone": _first(lrow, "Contact Number", "lc_phone") or _first(mrow, "Branch Person Contact Number"),
             "sim_status": _first(srow, "Status", "status"),
+            "sim_number": _first(srow, "SIM Number", "SIMNumber", "Asset Number") or _first(urow, "Asset Number", "SIM Number"),
             "sim_mdn": _first(srow, "MDN Number", "MDN", "mdn"),
             "sim_ip": _first(srow, "IP Address", "IP", "ip"),
             "sim_telco": _first(srow, "Telco", "telco"),
@@ -531,6 +532,7 @@ def render_multi_site_pack():
         "downs_3m": "Downs 3M",
         "downs_6m": "Downs 6M",
         "past_downs": "Downs overall",
+        "sim_number": "SIM Number",
     }
     for c in list(show.columns):
         if c.startswith("usage_") and c.endswith("_GB"):
