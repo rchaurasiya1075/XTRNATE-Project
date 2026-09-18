@@ -14,6 +14,7 @@ SIM_GID = "1240520075"
 CKT_GID = "886642043"
 LC_GID = "401145054"
 USAGE_GID = "710549453"
+FALLBACK_GID = "658119379"
 MASTER_ID = "1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I"
 MASTER_GID = "1181450647"
 
@@ -337,6 +338,15 @@ def _load_usage():
     return df
 
 
+@st.cache_data(ttl=180, show_spinner=False)
+def _load_fallback():
+    df = load_sheet_as_csv(XTRANET, gid=FALLBACK_GID)
+    df.columns = [str(c).strip() for c in df.columns]
+    sc = _col(df, "hughessitecode", "site code", "sitecode") or df.columns[1]
+    df["site_code"] = df[sc].astype(str).str.strip().str.upper()
+    return df
+
+
 def _safe_load(fn):
     try:
         return fn()
@@ -377,10 +387,11 @@ def build_pack(codes: list[str]) -> dict:
     lc = _safe_load(_load_lc)
     master = _safe_load(_load_master)
     usage = _safe_load(_load_usage)
+    fallback = _safe_load(_load_fallback)
     gb_cols = _gb_month_cols(usage.columns) if usage is not None and not usage.empty else []
     resolved = _resolve_queries(
         codes,
-        [sim, ckt, lc, master, usage, closed, open_df, raw],
+        [sim, ckt, lc, master, usage, fallback, closed, open_df, raw],
     )
 
     summary_rows = []
@@ -396,6 +407,7 @@ def build_pack(codes: list[str]) -> dict:
         lrow = _slice(lc, site)
         mrow = _slice(master, site)
         urow = _slice(usage, site)
+        frow = _slice(fallback, site)
 
         if not hist.empty:
             hist_all.append(hist)
@@ -409,6 +421,8 @@ def build_pack(codes: list[str]) -> dict:
             lc_all.append(lrow)
         if not mrow.empty:
             lm_all.append(mrow)
+        elif not frow.empty:
+            lm_all.append(frow)
         if not urow.empty:
             usage_all.append(urow)
 
@@ -416,7 +430,7 @@ def build_pack(codes: list[str]) -> dict:
         rec = {
             "search": query,
             "site_code": site,
-            "found": "Yes" if any(len(x) for x in (hist, opens, srow, crow, lrow, mrow, urow)) else "No",
+            "found": "Yes" if any(len(x) for x in (hist, opens, srow, crow, lrow, mrow, urow, frow)) else "No",
             "past_downs": downs,
             "open_now": len(opens),
             "downs_1m": _down_count(hist, 1),
@@ -428,19 +442,19 @@ def build_pack(codes: list[str]) -> dict:
             "dt_2m_hrs": _dt_hours(hist, 2),
             "dt_3m_hrs": _dt_hours(hist, 3),
             "dt_6m_hrs": _dt_hours(hist, 6),
-            "isp": _first(mrow, "ISP Name", "ISP", "isp") or _first(crow, "ISP", "isp") or _first(hist, "isp", "owner"),
-            "media": _first(mrow, "Media"),
-            "ckt_id": _first(mrow, "Ckt ID") or _first(crow, "Ckt ID", "ckt_id"),
-            "bank": _first(mrow, "Bank Name") or _first(crow, "Bank Name", "bank_name"),
-            "branch": _first(mrow, "Branch Name") or _first(crow, "Branch Name", "branch_name"),
-            "state": _first(mrow, "State") or _first(hist, "state") or _first(crow, "State", "state"),
-            "lc_name": _first(lrow, "Branch Person Name", "lc_name") or _first(mrow, "Branch Person Name"),
-            "lc_phone": _first(lrow, "Contact Number", "lc_phone") or _first(mrow, "Branch Person Contact Number"),
+            "isp": _first(mrow, "ISP Name", "ISP", "isp") or _first(crow, "ISP", "isp") or _first(hist, "isp", "owner") or _first(frow, "ISP Name", "ISP", "Partner"),
+            "media": _first(mrow, "Media") or _first(frow, "New Last Mile Media", "Media"),
+            "ckt_id": _first(mrow, "Ckt ID") or _first(crow, "Ckt ID", "ckt_id") or _first(frow, "Ckt ID"),
+            "bank": _first(mrow, "Bank Name") or _first(crow, "Bank Name", "bank_name") or _first(frow, "Bank Name"),
+            "branch": _first(mrow, "Branch Name") or _first(crow, "Branch Name", "branch_name") or _first(urow, "Branch") or _first(frow, "Branch Name"),
+            "state": _first(mrow, "State") or _first(hist, "state") or _first(crow, "State", "state") or _first(urow, "State") or _first(frow, "State"),
+            "lc_name": _first(lrow, "Branch Person Name", "lc_name") or _first(mrow, "Branch Person Name") or _first(frow, "New LC Name", "Branch Person Name"),
+            "lc_phone": _first(lrow, "Contact Number", "lc_phone") or _first(mrow, "Branch Person Contact Number") or _first(frow, "New LC Contact", "Branch Person Contact Number"),
             "sim_status": _first(srow, "Status", "status"),
             "sim_number": _first(urow, "Asset Number", "SIM Number", "SIMNumber") or _first(srow, "SIM Number", "SIMNumber", "Asset Number"),
             "sim_mdn": _first(urow, "MDN Number", "MDN", "mdn") or _first(srow, "MDN Number", "MDN", "mdn"),
-            "sim_ip": _first(srow, "IP Address", "IP", "ip"),
-            "sim_telco": _first(srow, "Telco", "telco"),
+            "sim_ip": _first(srow, "IP Address", "IP", "ip") or _first(urow, "IP Address", "IP"),
+            "sim_telco": _first(srow, "Telco", "telco") or _first(urow, "Telco"),
         }
         for mon, col in gb_cols:
             key = f"usage_{mon[:3]}_GB"
