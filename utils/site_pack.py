@@ -437,8 +437,8 @@ def build_pack(codes: list[str]) -> dict:
             "lc_name": _first(lrow, "Branch Person Name", "lc_name") or _first(mrow, "Branch Person Name"),
             "lc_phone": _first(lrow, "Contact Number", "lc_phone") or _first(mrow, "Branch Person Contact Number"),
             "sim_status": _first(srow, "Status", "status"),
-            "sim_number": _first(srow, "SIM Number", "SIMNumber", "Asset Number") or _first(urow, "Asset Number", "SIM Number"),
-            "sim_mdn": _first(srow, "MDN Number", "MDN", "mdn"),
+            "sim_number": _first(urow, "Asset Number", "SIM Number", "SIMNumber") or _first(srow, "SIM Number", "SIMNumber", "Asset Number"),
+            "sim_mdn": _first(urow, "MDN Number", "MDN", "mdn") or _first(srow, "MDN Number", "MDN", "mdn"),
             "sim_ip": _first(srow, "IP Address", "IP", "ip"),
             "sim_telco": _first(srow, "Telco", "telco"),
         }
