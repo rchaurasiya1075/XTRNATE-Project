@@ -13,9 +13,8 @@ from utils.auto_load import auto_load_tickets
 from utils.data_processing import isp_options, classify_isp
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
+from utils.sheets_config import xtranet_id, gid as sheet_gid
 
-SHEET_ID = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
-USAGE_GID = "710549453"
 PLAN_GB = 10.0
 MONTHS = ["january", "february", "march", "april", "may", "june",
           "july", "august", "september", "october", "november", "december"]
@@ -114,7 +113,7 @@ def norm_isp(v):
 
 @st.cache_data(ttl=180)
 def load_usage():
-    df = load_sheet_as_csv(SHEET_ID, gid=USAGE_GID)
+    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("sim_usage"))
     df.columns = [str(c).strip() for c in df.columns]
     return df
 
@@ -310,7 +309,7 @@ mon["avg_gb"] = mon["avg_gb"].round(2)
 st.dataframe(mon, use_container_width=True, hide_index=True)
 
 st.subheader("Site list")
-st.caption("Branch / State / ISP (Celerity → ONEOTT, HCIN) isi sheet se: gid 710549453")
+st.caption("Branch / State / ISP (Celerity → ONEOTT, HCIN) from the SIM usage sheet")
 show_src = view[[c for c in [
     "site_code", "branch_name", "state_name", "isp", "ckt_id", "month",
     "usage_gb", "plan_pct", "bb_downs", "Telco", "IP Address", "MDN Number",

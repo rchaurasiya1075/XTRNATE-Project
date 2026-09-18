@@ -8,6 +8,7 @@ from utils.data_processing import process_closed_tickets, process_open_tickets, 
 from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
 from utils.bootstrap import ensure_ready
 from utils.data_source import render_source_bar, save_google, save_upload, set_source
+from utils.sheets_config import xtranet_url
 
 st.set_page_config(page_title="Upload Data | Xtranet", page_icon="📤", layout="wide")
 
@@ -39,7 +40,7 @@ with tab1:
     
     sheet_url = st.text_input(
         "Google Sheet URL",
-        value="https://docs.google.com/spreadsheets/d/1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I/edit?usp=sharing",
+        value=xtranet_url(),
         help="Tickets sheet"
     )
     

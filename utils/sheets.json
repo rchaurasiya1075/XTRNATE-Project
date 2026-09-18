@@ -1,0 +1,74 @@
+{
+  "workbooks": {
+    "xtranet": {
+      "id": "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I",
+      "label": "Xtranet main (tickets, SIM, LC, circuit, site master)"
+    },
+    "ops": {
+      "id": "1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I",
+      "label": "Ops (daily open tickets, pending mail, last mile master)"
+    }
+  },
+  "tabs": {
+    "tickets_xtranet": {
+      "book": "xtranet",
+      "gid": 1980854633,
+      "label": "Xtranet ticket history"
+    },
+    "tickets_shell": {
+      "book": "xtranet",
+      "gid": 1861519338,
+      "label": "Shell ticket history"
+    },
+    "tickets_other": {
+      "book": "xtranet",
+      "gid": 1643784953,
+      "label": "Other / Backhaul / Link / DGLL tickets"
+    },
+    "daily_open": {
+      "book": "ops",
+      "gid": 407315218,
+      "label": "Daily open tickets"
+    },
+    "pending_mail": {
+      "book": "ops",
+      "gid": 762980214,
+      "label": "OPEN CALLS / pending mail"
+    },
+    "sim_inventory": {
+      "book": "xtranet",
+      "gid": 1240520075,
+      "label": "SIM inventory"
+    },
+    "sim_usage": {
+      "book": "xtranet",
+      "gid": 710549453,
+      "label": "SIM month-wise usage"
+    },
+    "circuit": {
+      "book": "xtranet",
+      "gid": 886642043,
+      "label": "Circuit ID"
+    },
+    "lc_master": {
+      "book": "xtranet",
+      "gid": 401145054,
+      "label": "LC master"
+    },
+    "site_primary": {
+      "book": "xtranet",
+      "gid": 2129640700,
+      "label": "Site master primary (SIM / IP / CKT / branch)"
+    },
+    "site_fallback": {
+      "book": "xtranet",
+      "gid": 658119379,
+      "label": "Site master fallback (bank / branch / LC)"
+    },
+    "last_mile_master": {
+      "book": "ops",
+      "gid": 1181450647,
+      "label": "Last mile / site master (ops)"
+    }
+  }
+}

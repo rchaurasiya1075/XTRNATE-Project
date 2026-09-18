@@ -8,11 +8,9 @@ from io import BytesIO
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready
 from utils.google_sheets import load_sheet_as_csv
+from utils.sheets_config import xtranet_id, gid as sheet_gid, tab_url
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
-
-SHEET_ID = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
-GID = "1240520075"
 
 st.set_page_config(page_title="SIM Inventory | XTRNATE", page_icon="📱", layout="wide")
 ensure_ready()
@@ -51,7 +49,7 @@ def pick_col(df, names):
 
 @st.cache_data(ttl=300)
 def load_inventory():
-    df = load_sheet_as_csv(SHEET_ID, gid=GID)
+    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("sim_inventory"))
     return uniquify_columns(df)
 
 
@@ -65,7 +63,7 @@ except Exception as e:
 if inv is None or inv.empty:
     st.warning(
         "SIM inventory tab did not load.\n\n"
-        f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit?gid={GID}"
+        f"{tab_url('sim_inventory')}"
     )
     if err:
         st.caption(f"Error: {err}")

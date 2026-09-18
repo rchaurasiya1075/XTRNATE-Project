@@ -5,9 +5,10 @@ from zoneinfo import ZoneInfo
 from utils.google_sheets import load_sheet_as_csv, extract_sheet_id
 from utils.data_processing import process_closed_tickets, process_open_tickets
 from utils.data_source import init_data_source, save_google
+from utils.sheets_config import xtranet_url, xtranet_id
 
-DEFAULT_SHEET_URL = "https://docs.google.com/spreadsheets/d/1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I/edit?usp=sharing"
-DEFAULT_GID = 1980854633
+DEFAULT_SHEET_URL = xtranet_url()
+DEFAULT_GID = None
 IST = ZoneInfo("Asia/Kolkata")
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -35,7 +36,7 @@ def auto_load_tickets(force: bool = False):
             _mark_updated()
         return True, "already_loaded"
 
-    sheet_id = extract_sheet_id(DEFAULT_SHEET_URL)
+    sheet_id = extract_sheet_id(xtranet_url()) or xtranet_id()
     if not sheet_id:
         return False, "Invalid sheet ID"
 

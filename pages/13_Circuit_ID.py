@@ -11,12 +11,10 @@ from utils.data_processing import classify_isp
 from utils.bootstrap import ensure_ready
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
+from utils.sheets_config import xtranet_id, xtranet_url, gid as sheet_gid
 
 st.set_page_config(page_title="Circuit ID | XTRNATE", page_icon="🔌", layout="wide")
 ensure_ready()
-
-CKT_URL = "https://docs.google.com/spreadsheets/d/1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I/edit?usp=sharing"
-CKT_GID = 886642043
 
 st.markdown("""
 <style>
@@ -44,8 +42,8 @@ st.markdown("""
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_ckt_master():
-    sid = extract_sheet_id(CKT_URL)
-    df = load_sheet_as_csv(sid, gid=CKT_GID)
+    sid = extract_sheet_id(xtranet_url()) or xtranet_id()
+    df = load_sheet_as_csv(sid, gid=sheet_gid("circuit"))
     df.columns = [str(c).strip() for c in df.columns]
     rename = {
         'Site Code': 'site_code',

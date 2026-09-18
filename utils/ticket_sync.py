@@ -17,14 +17,15 @@ import streamlit as st
 from utils.data_processing import process_closed_tickets, process_open_tickets
 from utils.data_source import save_google
 from utils.google_sheets import load_sheet_as_csv
+from utils.sheets_config import xtranet_id, ops_id, gid as sheet_gid
 
 IST = ZoneInfo("Asia/Kolkata")
-HISTORY_SHEET_ID = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
-DAILY_SHEET_ID = "1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I"
-DAILY_GID = 407315218
-XTRANET_GID = 1980854633
-SHELL_GID = 1861519338
-OTHER_GID = 1643784953
+HISTORY_SHEET_ID = xtranet_id()
+DAILY_SHEET_ID = ops_id()
+DAILY_GID = sheet_gid("daily_open")
+XTRANET_GID = sheet_gid("tickets_xtranet")
+SHELL_GID = sheet_gid("tickets_shell")
+OTHER_GID = sheet_gid("tickets_other")
 
 OPEN_HINTS = ("assign to fe", "call on hold", "on hold")
 
@@ -32,10 +33,10 @@ OPEN_HINTS = ("assign to fe", "call on hold", "on hold")
 def history_gid(project: str | None = None) -> int:
     name = str(project or "").strip().lower()
     if name == "shell":
-        return SHELL_GID
+        return int(sheet_gid("tickets_shell") or 0)
     if name in ("", "xtranet"):
-        return XTRANET_GID
-    return OTHER_GID
+        return int(sheet_gid("tickets_xtranet") or 0)
+    return int(sheet_gid("tickets_other") or 0)
 
 
 def _norm_id(v) -> str:
@@ -167,9 +168,9 @@ def _split_and_save(raw: pd.DataFrame, note: str):
 def sync_daily_tickets(project: str | None = None) -> dict:
     """Keep old history rows. Append new daily Incident IDs. Opens missing from daily → Resolved."""
     project = project or st.session_state.get("active_project") or "Xtranet"
-    gid = XTRANET_GID
-    daily = _fetch(DAILY_SHEET_ID, DAILY_GID)
-    history = _fetch(HISTORY_SHEET_ID, gid)
+    gid = sheet_gid("tickets_xtranet")
+    daily = _fetch(ops_id(), sheet_gid("daily_open"))
+    history = _fetch(xtranet_id(), gid)
 
     if history is None or history.empty:
         return {

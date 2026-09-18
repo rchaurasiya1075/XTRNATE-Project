@@ -8,16 +8,7 @@ import streamlit as st
 
 from utils.google_sheets import load_sheet_as_csv
 from utils.report_download import download_pack
-
-XTRANET = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
-SIM_GID = "1240520075"
-CKT_GID = "886642043"
-LC_GID = "401145054"
-USAGE_GID = "710549453"
-PRIMARY_GID = "2129640700"
-FALLBACK_GID = "658119379"
-MASTER_ID = "1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I"
-MASTER_GID = "1181450647"
+from utils.sheets_config import xtranet_id, ops_id, gid as sheet_gid
 
 HIST_COLS = [
     "ticket_id", "site_code", "submitted_time", "resolved_time", "resolution_days",
@@ -297,7 +288,7 @@ def _month_down_map(hist):
 
 @st.cache_data(ttl=180, show_spinner=False)
 def _load_sim():
-    df = load_sheet_as_csv(XTRANET, gid=SIM_GID)
+    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("sim_inventory"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "site code", "sitecode") or df.columns[0]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -306,7 +297,7 @@ def _load_sim():
 
 @st.cache_data(ttl=180, show_spinner=False)
 def _load_ckt():
-    df = load_sheet_as_csv(XTRANET, gid=CKT_GID)
+    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("circuit"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "site code") or df.columns[1]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -315,7 +306,7 @@ def _load_ckt():
 
 @st.cache_data(ttl=180, show_spinner=False)
 def _load_lc():
-    df = load_sheet_as_csv(XTRANET, gid=LC_GID)
+    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("lc_master"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "hughes site code", "site code") or df.columns[1]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -324,7 +315,7 @@ def _load_lc():
 
 @st.cache_data(ttl=180, show_spinner=False)
 def _load_master():
-    df = load_sheet_as_csv(MASTER_ID, gid=MASTER_GID)
+    df = load_sheet_as_csv(ops_id(), gid=sheet_gid("last_mile_master"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "hughessitecode", "site code", "sitecode") or df.columns[1]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -333,7 +324,7 @@ def _load_master():
 
 @st.cache_data(ttl=180, show_spinner=False)
 def _load_primary():
-    df = load_sheet_as_csv(XTRANET, gid=PRIMARY_GID)
+    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("site_primary"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "hughessitecode", "site code", "sitecode") or df.columns[1]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -342,7 +333,7 @@ def _load_primary():
 
 @st.cache_data(ttl=180, show_spinner=False)
 def _load_usage():
-    df = load_sheet_as_csv(XTRANET, gid=USAGE_GID)
+    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("sim_usage"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "site code", "sitecode", "hughessitecode") or df.columns[0]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -351,7 +342,7 @@ def _load_usage():
 
 @st.cache_data(ttl=180, show_spinner=False)
 def _load_fallback():
-    df = load_sheet_as_csv(XTRANET, gid=FALLBACK_GID)
+    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("site_fallback"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "hughessitecode", "site code", "sitecode") or df.columns[1]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()

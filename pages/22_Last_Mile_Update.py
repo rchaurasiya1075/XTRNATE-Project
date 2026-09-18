@@ -14,13 +14,9 @@ from utils.firebase_store import firebase_ready, upsert, get_one, list_all, _now
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 from utils.sheet_write import HEADERS, append_last_mile_log, sa_email
+from utils.sheets_config import xtranet_id, ops_id, gid as sheet_gid, csv_url, edit_url
 
 IST = ZoneInfo("Asia/Kolkata")
-MASTER_ID = "1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I"
-MASTER_GID = "1181450647"
-MAIL_GID = "762980214"
-CKT_ID = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
-CKT_GID = "886642043"
 
 st.set_page_config(page_title="Last Mile Update | XTRNATE", page_icon="📍", layout="wide")
 ensure_ready()
@@ -43,7 +39,7 @@ def _col(df, *names):
 
 @st.cache_data(ttl=180, show_spinner=False)
 def load_master():
-    df = load_sheet_as_csv(MASTER_ID, gid=MASTER_GID)
+    df = load_sheet_as_csv(ops_id(), gid=sheet_gid("last_mile_master"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "hughessitecode", "site code", "sitecode") or df.columns[1]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -52,7 +48,7 @@ def load_master():
 
 @st.cache_data(ttl=120, show_spinner=False)
 def load_open_calls():
-    url = f"https://docs.google.com/spreadsheets/d/{MASTER_ID}/export?format=csv&gid={MAIL_GID}"
+    url = csv_url("pending_mail")
     raw = pd.read_csv(url, header=None)
     header = [str(c).strip() for c in raw.iloc[3].tolist()]
     seen, cols = {}, []
@@ -75,7 +71,7 @@ def load_open_calls():
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_ckt():
-    df = load_sheet_as_csv(CKT_ID, gid=CKT_GID)
+    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("circuit"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "site code") or df.columns[1]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -229,7 +225,7 @@ else:
                 st.warning(
                     "Sheet write failed. Share this sheet with the service account as **Editor**:\n\n"
                     f"{mail}\n\n"
-                    f"Sheet: https://docs.google.com/spreadsheets/d/{MASTER_ID}\n\n"
+                    f"Sheet: {edit_url(ops_id())}\n\n"
                     f"Error: {sh_err}"
                 )
 

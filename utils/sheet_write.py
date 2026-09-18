@@ -17,8 +17,9 @@ def apply_ticket_sync(history_gid: int, new_rows, still_open_ids):
     """Append new Incident ID rows and mark disappeared opens as Resolved on the history tab."""
     import pandas as pd
 
+    from utils.sheets_config import xtranet_id
     gc, email = _client()
-    ss = _retry(lambda: gc.open_by_key(XTRANET_SHEET_ID))
+    ss = _retry(lambda: gc.open_by_key(xtranet_id()))
     ws = _ws_by_gid(ss, int(history_gid))
     values = _retry(lambda: ws.get_all_values()) or []
     if not values:

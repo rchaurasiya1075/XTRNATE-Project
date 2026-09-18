@@ -14,7 +14,7 @@ from utils.powerbi_pack import (
     google_sheet_m,
     power_query_m,
 )
-from utils.auto_load import DEFAULT_SHEET_URL
+from utils.sheets_config import xtranet_url
 
 st.set_page_config(page_title="Power BI | Xtranet", page_icon="📊", layout="wide")
 init_data_source()
@@ -126,5 +126,5 @@ with tabs[2]:
 **Path B — live Google Sheet**  
 Power BI Desktop → Get data → Web. Use the sheet CSV export if sharing is on.
     """)
-    st.code(google_sheet_m(DEFAULT_SHEET_URL), language="text")
+    st.code(google_sheet_m(xtranet_url()), language="text")
     st.caption("Service account / tenant embed (app-owns-data) needs Azure client secrets — not stored here. Use Publish-to-web or a view URL.")

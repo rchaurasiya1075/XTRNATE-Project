@@ -148,6 +148,7 @@ tools = [
     st.Page("pages/25_Power_BI.py", title="Power BI", icon="📊"),
     st.Page("pages/24_Excel_to_PPT.py", title="Excel to PPT", icon="🎬"),
     st.Page("pages/2_Upload_Data.py", title="Upload Data", icon="📤"),
+    st.Page("pages/26_Sheet_Links.py", title="Sheet Links", icon="🔗"),
     st.Page("pages/5_Escalation_Matrix.py", title="Escalation Matrix", icon="⚙️"),
 ]
 

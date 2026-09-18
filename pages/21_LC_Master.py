@@ -15,12 +15,7 @@ from utils.sheet_write import (
     update_lc_excel, update_lc_excel_batch, test_sheet_write,
     phone_keys, unique_contact,
 )
-
-XTRANET = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
-MAIL_ID = "1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I"
-LC_GID = "401145054"
-TARGET_GID = "658119379"
-MAIL_GID = "762980214"
+from utils.sheets_config import xtranet_id, ops_id, gid as sheet_gid, csv_url
 
 st.set_page_config(page_title="LC Master | XTRNATE", page_icon="📋", layout="wide")
 ensure_ready()
@@ -92,7 +87,7 @@ def map_col(df, dest, *names):
 
 @st.cache_data(ttl=120, show_spinner=False)
 def load_old_lc():
-    df = load_sheet_as_csv(XTRANET, gid=LC_GID)
+    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("lc_master"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "hughes site code", "site code") or df.columns[1]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -108,7 +103,7 @@ def load_old_lc():
 
 @st.cache_data(ttl=90, show_spinner=False)
 def load_pending_mail():
-    url = f"https://docs.google.com/spreadsheets/d/{MAIL_ID}/export?format=csv&gid={MAIL_GID}"
+    url = csv_url("pending_mail")
     raw = pd.read_csv(url, header=None)
     header = [str(c).strip() for c in raw.iloc[3].tolist()]
     seen, cols = {}, []
@@ -157,7 +152,7 @@ def load_pending_mail():
 
 @st.cache_data(ttl=180, show_spinner=False)
 def load_target():
-    df = load_sheet_as_csv(XTRANET, gid=TARGET_GID)
+    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("site_fallback"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "hughessitecode", "site code") or df.columns[1]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -480,7 +475,7 @@ if q:
                 st.error(f"{type(e).__name__}: {e}")
 
 st.markdown("---")
-st.subheader("LC tab (401145054) full list")
+st.subheader("LC tab full list")
 st.dataframe(old[["site_code", "lc_name", "lc_phone", "handled_by"]], use_container_width=True, height=300)
 download_pack(
     "LC tab",

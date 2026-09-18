@@ -14,14 +14,12 @@ from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 from utils.anim_deck import build_animated_pptx
 from utils.data_source import save_google, source_status
-from utils.ticket_sync import history_gid, HISTORY_SHEET_ID
+from utils.ticket_sync import history_gid
+from utils.sheets_config import xtranet_id, xtranet_url
 
 st.set_page_config(
     page_title="Partner Report | XTRNATE", page_icon="📄", layout="wide"
 )
-
-DATA_URL = "https://docs.google.com/spreadsheets/d/1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I/edit?usp=sharing"
-DATA_GID = 1980854633
 
 CLASS_ORDER = [
     "Fibre Cut",
@@ -295,7 +293,7 @@ with st.expander("🔄 Reload Data from Google Sheet"):
     st.caption("This updates the Google Sheet slot only. If reports are on Manual Excel, they stay on the upload.")
     if st.button("Reload DATA tab", type="primary"):
         try:
-            sid = extract_sheet_id(DATA_URL) or HISTORY_SHEET_ID
+            sid = extract_sheet_id(xtranet_url()) or xtranet_id()
             gid = history_gid(st.session_state.get("active_project") or "Xtranet")
             raw = load_sheet_as_csv(sid, gid=gid)
             processed = process_closed_tickets(raw)

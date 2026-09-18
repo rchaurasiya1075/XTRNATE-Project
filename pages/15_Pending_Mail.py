@@ -9,22 +9,18 @@ import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, apply_isp_filter
-from utils.google_sheets import extract_sheet_id
 from utils.data_processing import classify_isp
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
+from utils.sheets_config import csv_url
 
 st.set_page_config(page_title="Pending Mail | XTRNATE", page_icon="📧", layout="wide")
 ensure_ready()
 
-MAIL_SHEET_URL = "https://docs.google.com/spreadsheets/d/1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I/edit?gid=762980214#gid=762980214"
-MAIL_GID = 762980214
-
 
 @st.cache_data(ttl=120, show_spinner=False)
 def load_mail_sheet():
-    sid = extract_sheet_id(MAIL_SHEET_URL)
-    url = f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv&gid={MAIL_GID}"
+    url = csv_url("pending_mail")
     raw = pd.read_csv(url, header=None)
     # Row 3 is the real header on this tab
     header = [str(c).strip() for c in raw.iloc[3].tolist()]
