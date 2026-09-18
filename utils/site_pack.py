@@ -13,6 +13,7 @@ XTRANET = "1ELusYn2el4_rvHJYFD1_c92FN4SVQ1Cgwp-BwFADi8I"
 SIM_GID = "1240520075"
 CKT_GID = "886642043"
 LC_GID = "401145054"
+USAGE_GID = "710549453"
 MASTER_ID = "1bkXg9iqJMY4jw_fAsMa6XQDHiA3qOln7d8f_0RqHc6I"
 MASTER_GID = "1181450647"
 
@@ -21,6 +22,25 @@ HIST_COLS = [
     "down_time_min", "status", "category", "reason_clean", "reason", "owner", "isp",
     "state", "city", "open_hours",
 ]
+
+MONTH_ORDER = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
+MONTH_ALIAS = {
+    "jan": "January", "january": "January",
+    "feb": "February", "february": "February",
+    "mar": "March", "march": "March",
+    "apr": "April", "april": "April",
+    "may": "May",
+    "jun": "June", "june": "June",
+    "jul": "July", "july": "July",
+    "aug": "August", "august": "August",
+    "sep": "September", "sept": "September", "september": "September",
+    "oct": "October", "october": "October",
+    "nov": "November", "november": "November",
+    "dec": "December", "december": "December",
+}
 
 
 def parse_site_codes(text: str) -> list[str]:
@@ -56,6 +76,65 @@ def _clean(v):
     return "" if s.lower() in ("nan", "none", "--") else s
 
 
+def _parse_gb(v):
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    s = str(v).lower().replace(",", " ").replace("gb", "").strip()
+    try:
+        return round(float(s), 2)
+    except Exception:
+        m = re.search(r"([0-9]+(?:\.[0-9]+)?)", s)
+        return round(float(m.group(1)), 2) if m else None
+
+
+def _month_from_col(col):
+    tokens = re.findall(r"[a-z]+", str(col).lower())
+    hit = None
+    for tok in tokens:
+        if tok in MONTH_ALIAS:
+            name = MONTH_ALIAS[tok]
+            if hit is None or len(tok) > 3:
+                hit = name
+    return hit
+
+
+def _gb_month_cols(columns):
+    best = {}
+    for c in columns:
+        mon = _month_from_col(c)
+        if not mon:
+            continue
+        cl = str(c).lower()
+        score = 0
+        if "gb" in cl:
+            score += 5
+        if "usage" in cl or "uses" in cl:
+            score += 2
+        if "in gb" in cl:
+            score += 3
+        prev = best.get(mon)
+        if prev is None or score > prev[1]:
+            best[mon] = (c, score)
+    return [(m, best[m][0]) for m in MONTH_ORDER if m in best]
+
+
+def _dt_hours(hist, months=None):
+    if hist is None or getattr(hist, "empty", True) or "down_time_min" not in hist.columns:
+        return 0.0
+    work = hist
+    if months:
+        tcol = "submitted_time" if "submitted_time" in hist.columns else (
+            "Submitted Time" if "Submitted Time" in hist.columns else None
+        )
+        if tcol is None:
+            return 0.0
+        ts = pd.to_datetime(hist[tcol], errors="coerce")
+        cutoff = pd.Timestamp.now() - pd.DateOffset(months=int(months))
+        work = hist.loc[ts.notna() & (ts >= cutoff)]
+    mins = pd.to_numeric(work["down_time_min"], errors="coerce").fillna(0).sum()
+    return round(float(mins) / 60.0, 1)
+
+
 @st.cache_data(ttl=180, show_spinner=False)
 def _load_sim():
     df = load_sheet_as_csv(XTRANET, gid=SIM_GID)
@@ -88,6 +167,15 @@ def _load_master():
     df = load_sheet_as_csv(MASTER_ID, gid=MASTER_GID)
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "hughessitecode", "site code", "sitecode") or df.columns[1]
+    df["site_code"] = df[sc].astype(str).str.strip().str.upper()
+    return df
+
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _load_usage():
+    df = load_sheet_as_csv(XTRANET, gid=USAGE_GID)
+    df.columns = [str(c).strip() for c in df.columns]
+    sc = _col(df, "site code", "sitecode", "hughessitecode") or df.columns[0]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
     return df
 
@@ -131,9 +219,11 @@ def build_pack(codes: list[str]) -> dict:
     ckt = _safe_load(_load_ckt)
     lc = _safe_load(_load_lc)
     master = _safe_load(_load_master)
+    usage = _safe_load(_load_usage)
+    gb_cols = _gb_month_cols(usage.columns) if usage is not None and not usage.empty else []
 
     summary_rows = []
-    hist_all, open_all, sim_all, ckt_all, lc_all, lm_all = [], [], [], [], [], []
+    hist_all, open_all, sim_all, ckt_all, lc_all, lm_all, usage_all = [], [], [], [], [], [], []
 
     for site in codes:
         hist = _slice(closed, site)
@@ -144,6 +234,7 @@ def build_pack(codes: list[str]) -> dict:
         crow = _slice(ckt, site)
         lrow = _slice(lc, site)
         mrow = _slice(master, site)
+        urow = _slice(usage, site)
 
         if not hist.empty:
             hist_all.append(hist)
@@ -157,17 +248,20 @@ def build_pack(codes: list[str]) -> dict:
             lc_all.append(lrow)
         if not mrow.empty:
             lm_all.append(mrow)
+        if not urow.empty:
+            usage_all.append(urow)
 
         downs = len(hist)
-        dt_hrs = 0
-        if not hist.empty and "down_time_min" in hist.columns:
-            dt_hrs = round(pd.to_numeric(hist["down_time_min"], errors="coerce").fillna(0).sum() / 60, 1)
-        summary_rows.append({
+        rec = {
             "site_code": site,
-            "found": "Yes" if any(len(x) for x in (hist, opens, srow, crow, lrow, mrow)) else "No",
+            "found": "Yes" if any(len(x) for x in (hist, opens, srow, crow, lrow, mrow, urow)) else "No",
             "past_downs": downs,
             "open_now": len(opens),
-            "downtime_hrs": dt_hrs,
+            "downtime_hrs": _dt_hours(hist),
+            "dt_1m_hrs": _dt_hours(hist, 1),
+            "dt_2m_hrs": _dt_hours(hist, 2),
+            "dt_3m_hrs": _dt_hours(hist, 3),
+            "dt_6m_hrs": _dt_hours(hist, 6),
             "isp": _first(mrow, "ISP Name", "ISP", "isp") or _first(crow, "ISP", "isp") or _first(hist, "isp", "owner"),
             "media": _first(mrow, "Media"),
             "ckt_id": _first(mrow, "Ckt ID") or _first(crow, "Ckt ID", "ckt_id"),
@@ -180,7 +274,14 @@ def build_pack(codes: list[str]) -> dict:
             "sim_mdn": _first(srow, "MDN Number", "MDN", "mdn"),
             "sim_ip": _first(srow, "IP Address", "IP", "ip"),
             "sim_telco": _first(srow, "Telco", "telco"),
-        })
+        }
+        for mon, col in gb_cols:
+            key = f"usage_{mon[:3]}_GB"
+            val = None
+            if not urow.empty and col in urow.columns:
+                val = _parse_gb(urow.iloc[0].get(col))
+            rec[key] = val if val is not None else ""
+        summary_rows.append(rec)
 
     def cat(frames):
         if not frames:
@@ -196,6 +297,8 @@ def build_pack(codes: list[str]) -> dict:
         "circuit": cat(ckt_all),
         "lc": cat(lc_all),
         "last_mile": cat(lm_all),
+        "usage": cat(usage_all),
+        "usage_months": [m for m, _ in gb_cols],
     }
 
 
@@ -242,7 +345,19 @@ def render_multi_site_pack():
     k4.metric("Past downs", int(summary["past_downs"].sum()) if not summary.empty else 0)
 
     st.markdown("#### Overall — one row per site")
-    st.dataframe(summary, use_container_width=True, height=min(420, 48 + 32 * min(len(summary), 12)))
+    show = summary.copy()
+    rename = {
+        "downtime_hrs": "DT overall hrs",
+        "dt_1m_hrs": "DT 1M hrs",
+        "dt_2m_hrs": "DT 2M hrs",
+        "dt_3m_hrs": "DT 3M hrs",
+        "dt_6m_hrs": "DT 6M hrs",
+    }
+    for c in list(show.columns):
+        if c.startswith("usage_") and c.endswith("_GB"):
+            mon = c.replace("usage_", "").replace("_GB", "")
+            rename[c] = f"Usage {mon} GB"
+    st.dataframe(show.rename(columns=rename), use_container_width=True, height=min(420, 48 + 32 * min(len(summary), 12)))
 
     missing = summary[summary["found"] == "No"]["site_code"].tolist() if not summary.empty else []
     if missing:
@@ -263,6 +378,8 @@ def render_multi_site_pack():
         sheets["LC"] = pack["lc"]
     if not pack["last_mile"].empty:
         sheets["Last_Mile"] = pack["last_mile"]
+    if not pack.get("usage", pd.DataFrame()).empty:
+        sheets["SIM_Usage"] = pack["usage"]
 
     download_pack(
         f"{len(codes)} sites pack",
@@ -289,7 +406,19 @@ def render_multi_site_pack():
             c.write(f"**SIM:** {row['sim_status'] or '—'}")
             c.write(f"**MDN:** `{row['sim_mdn'] or '—'}`")
             c.write(f"**IP:** `{row['sim_ip'] or '—'}`  ·  {row['sim_telco'] or ''}")
-
+            st.caption(
+                f"Downtime hrs — overall {row.get('downtime_hrs', 0)}  ·  "
+                f"1M {row.get('dt_1m_hrs', 0)}  ·  2M {row.get('dt_2m_hrs', 0)}  ·  "
+                f"3M {row.get('dt_3m_hrs', 0)}  ·  6M {row.get('dt_6m_hrs', 0)}"
+            )
+            months = pack.get("usage_months") or []
+            bits = []
+            for mon in months:
+                key = f"usage_{mon[:3]}_GB"
+                val = row.get(key, "")
+                if val not in ("", None):
+                    bits.append(f"{mon[:3]} {val} GB")
+            st.caption("SIM usage: " + ("  ·  ".join(bits) if bits else "not on usage sheet"))
             hist = _slice(pack["history"], site) if not pack["history"].empty else pd.DataFrame()
             opens = _slice(pack["open"], site) if not pack["open"].empty else pd.DataFrame()
             if not opens.empty:
