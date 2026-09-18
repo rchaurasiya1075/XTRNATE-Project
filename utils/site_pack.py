@@ -44,17 +44,142 @@ MONTH_ALIAS = {
 
 
 def parse_site_codes(text: str) -> list[str]:
+    """Site code, IP, MDN, SIM / asset, branch or location — comma / space / new line."""
     if not text:
         return []
-    parts = re.split(r"[\s,;|]+", str(text).strip().upper())
+    skip = {
+        "SITE", "CODE", "SITECODE", "SITES", "IP", "MDN", "SIM", "BRANCH",
+        "NAME", "ADDRESS", "LOCATION",
+    }
+    chunks = re.split(r"[\n,;|]+", str(text))
     out, seen = [], set()
-    for p in parts:
-        s = re.sub(r"[^A-Z0-9\-_]", "", p)
-        if not s or s in seen or s in ("SITE", "CODE", "SITECODE", "SITES"):
+
+    def is_id_token(p: str) -> bool:
+        s = str(p).strip()
+        if re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", s):
+            return True
+        if re.fullmatch(r"[A-Za-z0-9\-_]{5,}", s):
+            return True
+        return False
+
+    def add(raw: str):
+        s = str(raw).strip()
+        if not s:
+            return
+        key = re.sub(r"\s+", " ", s).upper()
+        if key in skip or key in seen:
+            return
+        seen.add(key)
+        out.append(s.strip())
+
+    for chunk in chunks:
+        chunk = chunk.strip()
+        if not chunk:
             continue
-        seen.add(s)
-        out.append(s)
+        parts = chunk.split()
+        if len(parts) > 1 and all(is_id_token(p) for p in parts):
+            for p in parts:
+                add(p)
+        else:
+            add(chunk)
     return out
+
+
+def _norm_key(v) -> str:
+    s = _clean(v).upper()
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _lookup_cols(df):
+    wanted = (
+        "site code", "sitecode", "site_code", "ip", "mdn", "asset", "sim number",
+        "ckt", "branch", "state", "address", "city", "location", "hughes",
+    )
+    cols = []
+    for c in df.columns:
+        cl = str(c).strip().lower()
+        if cl == "site_code" or any(w in cl for w in wanted):
+            cols.append(c)
+    return cols
+
+
+def _build_search_index(frames):
+    idx = {}
+    name_pairs = []
+
+    def add(k, site):
+        site = str(site or "").strip().upper()
+        k = _norm_key(k)
+        if not site or not k or k in ("NAN", "NONE", "-", "--") or len(k) < 2:
+            return
+        bucket = idx.setdefault(k, [])
+        if site not in bucket:
+            bucket.append(site)
+        compact = re.sub(r"[^A-Z0-9]", "", k)
+        if compact != k and len(compact) >= 6:
+            b2 = idx.setdefault(compact, [])
+            if site not in b2:
+                b2.append(site)
+        digits = re.sub(r"\D", "", k)
+        if len(digits) >= 8:
+            b3 = idx.setdefault(digits, [])
+            if site not in b3:
+                b3.append(site)
+
+    for df in frames:
+        if df is None or getattr(df, "empty", True) or "site_code" not in df.columns:
+            continue
+        sites = df["site_code"].astype(str).str.strip().str.upper()
+        for col in _lookup_cols(df):
+            cl = str(col).strip().lower()
+            series = df[col]
+            is_name = any(w in cl for w in ("branch", "state", "city", "location")) and "ip" not in cl
+            for val, site in zip(series.tolist(), sites.tolist()):
+                add(val, site)
+                if is_name:
+                    nk = _norm_key(val)
+                    if len(nk) >= 3:
+                        name_pairs.append((nk, str(site).strip().upper()))
+        for site in sites.tolist():
+            add(site, site)
+    return idx, name_pairs
+
+
+def _resolve_queries(queries, frames):
+    idx, name_pairs = _build_search_index(frames)
+    pairs = []
+    seen = set()
+    for q in queries:
+        qn = _norm_key(q)
+        hits = list(idx.get(qn) or [])
+        if not hits:
+            compact = re.sub(r"[^A-Z0-9]", "", qn)
+            hits = list(idx.get(compact) or [])
+        if not hits:
+            digits = re.sub(r"\D", "", qn)
+            if len(digits) >= 8:
+                hits = list(idx.get(digits) or [])
+        if not hits and len(qn) >= 4:
+            for k, site in name_pairs:
+                if qn in k and site not in hits:
+                    hits.append(site)
+            if not hits:
+                for k, slist in idx.items():
+                    if len(k) >= 4 and qn in k:
+                        for s in slist:
+                            if s not in hits:
+                                hits.append(s)
+        if not hits:
+            code = re.sub(r"[^A-Z0-9.\-_]", "", qn) or qn
+            if code not in seen:
+                seen.add(code)
+                pairs.append((q, code))
+            continue
+        for site in hits:
+            if site not in seen:
+                seen.add(site)
+                pairs.append((q, site))
+    return pairs
 
 
 def _col(df, *names):
@@ -253,11 +378,15 @@ def build_pack(codes: list[str]) -> dict:
     master = _safe_load(_load_master)
     usage = _safe_load(_load_usage)
     gb_cols = _gb_month_cols(usage.columns) if usage is not None and not usage.empty else []
+    resolved = _resolve_queries(
+        codes,
+        [sim, ckt, lc, master, usage, closed, open_df, raw],
+    )
 
     summary_rows = []
     hist_all, open_all, sim_all, ckt_all, lc_all, lm_all, usage_all = [], [], [], [], [], [], []
 
-    for site in codes:
+    for query, site in resolved:
         hist = _slice(closed, site)
         if hist.empty:
             hist = _slice(raw, site)
@@ -285,6 +414,7 @@ def build_pack(codes: list[str]) -> dict:
 
         downs = len(hist)
         rec = {
+            "search": query,
             "site_code": site,
             "found": "Yes" if any(len(x) for x in (hist, opens, srow, crow, lrow, mrow, urow)) else "No",
             "past_downs": downs,
@@ -357,10 +487,10 @@ def _hist_view(df):
 
 
 def render_multi_site_pack():
-    st.markdown("**Paste site codes** — comma / space / new line. History + SIM + last mile + LC + circuit together.")
+    st.markdown("**Paste site codes, IP, MDN, SIM number, branch or location** — comma / space / new line. All matches load, no 80 cap.")
     blob = st.text_area(
         "Site codes",
-        placeholder="XTNNTL358\nXTNCHG364, XTNSLN354  XTNDEL201",
+        placeholder="XTNNTL358\n172.28.1.29\n5753200327575\nKargil",
         height=110,
         key="dash_multi_sites",
         label_visibility="collapsed",
@@ -369,26 +499,23 @@ def render_multi_site_pack():
     if not go:
         n = len(parse_site_codes(blob or ""))
         if n:
-            st.caption(f"{n} site code(s) ready — click **Load all sites**.")
+            st.caption(f"{n} search value(s) ready — click **Load all sites**. Every row is included.")
         return
 
     codes = parse_site_codes(blob or "")
     if not codes:
-        st.warning("No site code found. Paste codes and click Load.")
+        st.warning("Nothing to search. Paste site code / IP / MDN / SIM / branch / location and click Load.")
         return
-    if len(codes) > 80:
-        st.warning(f"{len(codes)} codes — showing the first 80.")
-        codes = codes[:80]
 
-    with st.spinner(f"{len(codes)} sites — building pack..."):
+    with st.spinner(f"{len(codes)} search value(s) — building pack..."):
         pack = build_pack(codes)
 
     summary = pack["summary"]
     found_n = int((summary["found"] == "Yes").sum()) if not summary.empty else 0
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Codes", len(codes))
-    k2.metric("Found", found_n)
-    k3.metric("Not found", len(codes) - found_n)
+    k1.metric("Searched", len(codes))
+    k2.metric("Sites found", found_n)
+    k3.metric("Not found", int((summary["found"] == "No").sum()) if not summary.empty else 0)
     k4.metric("Past downs", int(summary["past_downs"].sum()) if not summary.empty else 0)
 
     st.markdown("#### Overall — one row per site")
@@ -445,8 +572,8 @@ def render_multi_site_pack():
     )
 
     st.markdown("#### Site-wise detail")
-    for site in codes:
-        row = summary[summary["site_code"] == site].iloc[0]
+    for _, row in summary.iterrows():
+        site = str(row["site_code"])
         with st.expander(
             f"{site}  ·  downs {int(row['past_downs'])}  ·  open {int(row['open_now'])}  ·  {row['isp'] or '—'}  ·  {row['found']}",
             expanded=False,
