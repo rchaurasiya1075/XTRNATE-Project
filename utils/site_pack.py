@@ -135,6 +135,38 @@ def _dt_hours(hist, months=None):
     return round(float(mins) / 60.0, 1)
 
 
+def _ticket_ts(hist):
+    if hist is None or getattr(hist, "empty", True):
+        return None
+    for c in ("submitted_time", "Submitted Time"):
+        if c in hist.columns:
+            return pd.to_datetime(hist[c], errors="coerce")
+    return None
+
+
+def _down_count(hist, months=None):
+    if hist is None or getattr(hist, "empty", True):
+        return 0
+    ts = _ticket_ts(hist)
+    if ts is None:
+        return 0 if months else int(len(hist))
+    if not months:
+        return int(ts.notna().sum())
+    cutoff = pd.Timestamp.now() - pd.DateOffset(months=int(months))
+    return int((ts.notna() & (ts >= cutoff)).sum())
+
+
+def _month_down_map(hist):
+    ts = _ticket_ts(hist)
+    if ts is None:
+        return {}
+    s = ts.dropna()
+    if s.empty:
+        return {}
+    vc = s.dt.to_period("M").value_counts()
+    return {str(p): int(n) for p, n in vc.items()}
+
+
 @st.cache_data(ttl=180, show_spinner=False)
 def _load_sim():
     df = load_sheet_as_csv(XTRANET, gid=SIM_GID)
@@ -257,6 +289,10 @@ def build_pack(codes: list[str]) -> dict:
             "found": "Yes" if any(len(x) for x in (hist, opens, srow, crow, lrow, mrow, urow)) else "No",
             "past_downs": downs,
             "open_now": len(opens),
+            "downs_1m": _down_count(hist, 1),
+            "downs_2m": _down_count(hist, 2),
+            "downs_3m": _down_count(hist, 3),
+            "downs_6m": _down_count(hist, 6),
             "downtime_hrs": _dt_hours(hist),
             "dt_1m_hrs": _dt_hours(hist, 1),
             "dt_2m_hrs": _dt_hours(hist, 2),
@@ -281,7 +317,18 @@ def build_pack(codes: list[str]) -> dict:
             if not urow.empty and col in urow.columns:
                 val = _parse_gb(urow.iloc[0].get(col))
             rec[key] = val if val is not None else ""
+        rec["_month_downs"] = _month_down_map(hist)
         summary_rows.append(rec)
+
+    periods = sorted({p for rec in summary_rows for p in rec.get("_month_downs", {})})
+    for rec in summary_rows:
+        mmap = rec.pop("_month_downs", {})
+        for p in periods:
+            try:
+                label = pd.Period(p, freq="M").strftime("%b-%y")
+            except Exception:
+                label = str(p)
+            rec[f"downs_{label}"] = int(mmap.get(p, 0))
 
     def cat(frames):
         if not frames:
@@ -352,11 +399,18 @@ def render_multi_site_pack():
         "dt_2m_hrs": "DT 2M hrs",
         "dt_3m_hrs": "DT 3M hrs",
         "dt_6m_hrs": "DT 6M hrs",
+        "downs_1m": "Downs 1M",
+        "downs_2m": "Downs 2M",
+        "downs_3m": "Downs 3M",
+        "downs_6m": "Downs 6M",
+        "past_downs": "Downs overall",
     }
     for c in list(show.columns):
         if c.startswith("usage_") and c.endswith("_GB"):
             mon = c.replace("usage_", "").replace("_GB", "")
             rename[c] = f"Usage {mon} GB"
+        elif c.startswith("downs_") and c not in rename:
+            rename[c] = "Downs " + c.replace("downs_", "")
     st.dataframe(show.rename(columns=rename), use_container_width=True, height=min(420, 48 + 32 * min(len(summary), 12)))
 
     missing = summary[summary["found"] == "No"]["site_code"].tolist() if not summary.empty else []
@@ -406,6 +460,19 @@ def render_multi_site_pack():
             c.write(f"**SIM:** {row['sim_status'] or '—'}")
             c.write(f"**MDN:** `{row['sim_mdn'] or '—'}`")
             c.write(f"**IP:** `{row['sim_ip'] or '—'}`  ·  {row['sim_telco'] or ''}")
+            st.caption(
+                f"Down count — overall {int(row.get('past_downs', 0))}  ·  "
+                f"1M {int(row.get('downs_1m', 0))}  ·  2M {int(row.get('downs_2m', 0))}  ·  "
+                f"3M {int(row.get('downs_3m', 0))}  ·  6M {int(row.get('downs_6m', 0))}"
+            )
+            cal = [
+                f"{c.replace('downs_', '')} {int(row.get(c, 0))}"
+                for c in summary.columns
+                if str(c).startswith("downs_") and c not in ("downs_1m", "downs_2m", "downs_3m", "downs_6m")
+                and int(row.get(c, 0) or 0) > 0
+            ]
+            if cal:
+                st.caption("Downs by month: " + "  ·  ".join(cal))
             st.caption(
                 f"Downtime hrs — overall {row.get('downtime_hrs', 0)}  ·  "
                 f"1M {row.get('dt_1m_hrs', 0)}  ·  2M {row.get('dt_2m_hrs', 0)}  ·  "
