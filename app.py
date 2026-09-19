@@ -143,6 +143,7 @@ sim_lastmile = [
     st.Page("pages/13_Circuit_ID.py", title="Circuit ID", icon="🔗"),
     st.Page("pages/21_LC_Master.py", title="LC Master", icon="📋"),
     st.Page("pages/22_Last_Mile_Update.py", title="Last Mile Update", icon="📍"),
+    st.Page("pages/27_Site_Updates.py", title="Site Updates", icon="🗂️"),
 ]
 tools = [
     st.Page("pages/25_Power_BI.py", title="Power BI", icon="📊"),

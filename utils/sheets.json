@@ -69,6 +69,11 @@
       "book": "ops",
       "gid": 1181450647,
       "label": "Last mile / site master (ops)"
+    },
+    "site_updated": {
+      "book": "xtranet",
+      "gid": 0,
+      "label": "Updated_Master (bulk site updates)"
     }
   }
 }
