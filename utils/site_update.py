@@ -49,20 +49,24 @@ UPDATE_COLS = [
 ]
 
 
-def _blank(v) -> bool:
+def _as_text(v) -> str:
     if v is None:
-        return True
+        return ""
     try:
         if pd.isna(v):
-            return True
+            return ""
     except Exception:
         pass
-    s = str(v).strip()
+    return str(v).strip()
+
+
+def _blank(v) -> bool:
+    s = _as_text(v)
     return s == "" or s.lower() in ("nan", "none", "nat", "--", "<na>")
 
 
 def _site_key(v) -> str:
-    return str(v or "").strip().upper()
+    return _as_text(v).upper()
 
 
 def _load_frames():
@@ -79,11 +83,13 @@ def _load_frames():
 
 def _all_codes(frames: dict) -> list[str]:
     seen, out = set(), []
+    skip = {"", "NAN", "NONE", "NAT", "<NA>", "SITE_CODE", "HUGHESSITECODE"}
     for df in frames.values():
         if df is None or getattr(df, "empty", True) or "site_code" not in df.columns:
             continue
-        for s in df["site_code"].astype(str).str.strip().str.upper().tolist():
-            if not s or s in seen or s in ("NAN", "NONE", "SITE_CODE", "HUGHESSITECODE"):
+        for raw in df["site_code"].tolist():
+            s = _site_key(raw)
+            if not s or s in skip or s in seen:
                 continue
             if len(s) < 4:
                 continue
