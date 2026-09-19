@@ -74,6 +74,11 @@
       "book": "xtranet",
       "gid": 0,
       "label": "Updated_Master (bulk site updates)"
+    },
+    "site_update_format": {
+      "book": "xtranet",
+      "gid": 0,
+      "label": "Update_Format (paste bulk changes here)"
     }
   }
 }

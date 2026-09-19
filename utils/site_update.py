@@ -27,6 +27,7 @@ from utils.site_pack import (
 
 IST = ZoneInfo("Asia/Kolkata")
 WS_TITLE = "Updated_Master"
+FORMAT_TITLE = "Update_Format"
 
 UPDATE_COLS = [
     "Site Code",
@@ -298,30 +299,81 @@ def _write_client():
     return gspread.authorize(creds)
 
 
-def _save_gid(gid: int):
+def _save_tab(key: str, gid: int, label: str):
     cfg = all_config()
     tabs = cfg.setdefault("tabs", {})
-    tabs["site_updated"] = {
-        "book": "xtranet",
-        "gid": int(gid),
-        "label": "Updated_Master (bulk site updates)",
-    }
+    tabs[key] = {"book": "xtranet", "gid": int(gid), "label": label}
     save_config(cfg)
 
 
-def ensure_updated_worksheet():
-    gc = _write_client()
-    ss = gc.open_by_key(xtranet_id())
+def _save_gid(gid: int):
+    _save_tab("site_updated", gid, "Updated_Master (bulk site updates)")
+
+
+def _open_book():
+    return _write_client().open_by_key(xtranet_id())
+
+
+def _ensure_ws(ss, title: str, rows: int, header: list[str]):
     try:
-        ws = ss.worksheet(WS_TITLE)
+        ws = ss.worksheet(title)
     except Exception:
-        ws = ss.add_worksheet(title=WS_TITLE, rows=3000, cols=len(UPDATE_COLS) + 8)
-        ws.update("A1", [UPDATE_COLS], value_input_option="USER_ENTERED")
+        ws = ss.add_worksheet(title=title, rows=rows, cols=max(len(header) + 4, 20))
+        ws.update("A1", [header], value_input_option="USER_ENTERED")
+        try:
+            ws.freeze(rows=1)
+        except Exception:
+            pass
+    return ws
+
+
+def ensure_format_and_master():
+    """Create Update_Format + Updated_Master tabs in the Xtranet workbook if missing."""
+    ss = _open_book()
+    fmt = _ensure_ws(ss, FORMAT_TITLE, 2000, UPDATE_COLS)
+    master = _ensure_ws(ss, WS_TITLE, 3000, UPDATE_COLS + ["Updated At"])
     try:
-        _save_gid(int(ws.id))
+        _save_tab("site_update_format", int(fmt.id), "Update_Format (paste bulk changes here)")
+        _save_tab("site_updated", int(master.id), "Updated_Master (bulk site updates)")
     except Exception:
         pass
-    return ws
+    return fmt, master
+
+
+def ensure_updated_worksheet():
+    _, master = ensure_format_and_master()
+    return master
+
+
+def _ws_to_df(ws) -> pd.DataFrame:
+    values = ws.get_all_values() or []
+    if not values:
+        return pd.DataFrame(columns=UPDATE_COLS)
+    header = [str(h).strip() for h in values[0]]
+    body = values[1:]
+    if not header or not any(header):
+        return pd.DataFrame(columns=UPDATE_COLS)
+    df = pd.DataFrame(body, columns=header)
+    return df
+
+
+def load_format_tab() -> pd.DataFrame:
+    fmt, _ = ensure_format_and_master()
+    return _normalize_update_df(_ws_to_df(fmt))
+
+
+def apply_format_sheet_to_master() -> dict:
+    """Read Update_Format tab and merge filled site rows into Updated_Master."""
+    incoming = load_format_tab()
+    if incoming.empty:
+        raise RuntimeError(
+            f"No site codes on the {FORMAT_TITLE} tab. "
+            "Paste Site Code and only the columns you want to change, then apply again."
+        )
+    result = apply_updates_to_google(incoming)
+    result["format_rows"] = int(len(incoming))
+    result["format_title"] = FORMAT_TITLE
+    return result
 
 
 def load_updated_tab() -> pd.DataFrame:
@@ -351,6 +403,8 @@ def apply_updates_to_google(upload_df: pd.DataFrame) -> dict:
     # Keep extra columns from existing sheet
     extra = [h for h in header if h not in cols]
     header_out = cols + extra
+    if "Updated At" not in header_out:
+        header_out.append("Updated At")
 
     def row_to_dict(line):
         d = {}

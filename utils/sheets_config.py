@@ -34,6 +34,7 @@ _DEFAULT = {
         "site_fallback": {"book": "xtranet", "gid": 658119379, "label": "Site master fallback"},
         "last_mile_master": {"book": "ops", "gid": 1181450647, "label": "Last mile master (ops)"},
         "site_updated": {"book": "xtranet", "gid": 0, "label": "Updated_Master (bulk site updates)"},
+        "site_update_format": {"book": "xtranet", "gid": 0, "label": "Update_Format (paste bulk changes here)"},
     },
 }
 
