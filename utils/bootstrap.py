@@ -7,6 +7,8 @@ from utils.auto_load import auto_load_tickets
 from utils.data_source import init_data_source, source_status, set_project, ensure_project_loaded
 
 IST = ZoneInfo("Asia/Kolkata")
+MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+PICK_YEARS = [2026, 2025, 2024, 2023]
 
 
 def last_ticket_raise():
@@ -181,6 +183,16 @@ def apply_period_filter(df):
         start = pd.Timestamp(d0)
         end = pd.Timestamp(d1) + pd.Timedelta(days=1)
         return df.loc[ts.notna() & (ts >= start) & (ts < end)].copy()
+    if mode == "Pick":
+        years = [int(y) for y in (st.session_state.get("period_pick_years") or [])]
+        labels = list(st.session_state.get("period_pick_months") or [])
+        months = [i + 1 for i, name in enumerate(MONTH_LABELS) if name in labels]
+        if not months:
+            return df
+        mask = ts.notna() & ts.dt.month.isin(months)
+        if years:
+            mask = mask & ts.dt.year.isin(years)
+        return df.loc[mask].copy()
     months = int(st.session_state.get("period_months") or 0)
     if months <= 0:
         return df
@@ -225,15 +237,24 @@ def render_period_filter():
         st.session_state.period_months = 3
         st.session_state.period_from = date.today() - timedelta(days=90)
         st.session_state.period_to = date.today()
-    c1, c2, c3 = st.columns([1.4, 1.4, 2.2])
+    if "period_pick_years" not in st.session_state:
+        st.session_state.period_pick_years = [2026, 2025]
+    if "period_pick_months" not in st.session_state:
+        st.session_state.period_pick_months = []
+    c1, c2, c3 = st.columns([1.6, 1.2, 2.2])
     with c1:
         mode = st.radio(
             "View period",
-            ["All time", "Last N months", "Custom dates"],
+            ["All time", "Last N months", "Pick months", "Custom dates"],
             horizontal=True,
             key="period_mode_radio",
         )
-        st.session_state.period_mode = {"All time": "All time", "Last N months": "Months", "Custom dates": "Custom"}[mode]
+        st.session_state.period_mode = {
+            "All time": "All time",
+            "Last N months": "Months",
+            "Pick months": "Pick",
+            "Custom dates": "Custom",
+        }[mode]
     with c2:
         n = st.selectbox(
             "Months",
@@ -254,7 +275,21 @@ def render_period_filter():
         if isinstance(rng, (list, tuple)) and len(rng) == 2 and rng[0] and rng[1]:
             st.session_state.period_from, st.session_state.period_to = rng[0], rng[1]
     mode = st.session_state.period_mode
-    if mode == "Months":
+    if mode == "Pick":
+        st.multiselect("Year", PICK_YEARS, key="period_pick_years")
+        st.multiselect(
+            "Months — select one or more (Jan + Feb = those 2 months)",
+            MONTH_LABELS,
+            key="period_pick_months",
+        )
+        picked_m = list(st.session_state.get("period_pick_months") or [])
+        picked_y = list(st.session_state.get("period_pick_years") or [])
+        if picked_m:
+            ys = ", ".join(str(y) for y in picked_y) if picked_y else "all years"
+            st.caption(f"Showing **{', '.join(picked_m)}** · **{ys}**.")
+        else:
+            st.caption("Pick months (Jan, Feb, Mar…). Two months selected = both months together.")
+    elif mode == "Months":
         st.caption(f"Showing last **{st.session_state.period_months}** month(s).")
     elif mode == "Custom":
         st.caption(f"Showing **{st.session_state.period_from}** → **{st.session_state.period_to}**.")

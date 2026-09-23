@@ -16,20 +16,22 @@ def _upper_col(df, tag):
 
 
 def get_site_history(site_code: str):
-    """Return closed history + open tickets for a site code."""
+    """Return closed history + open tickets for a site code (respects month filter)."""
+    from utils.bootstrap import apply_period_filter
+
     site = str(site_code).strip().upper()
-    closed = st.session_state.get("closed_df")
-    open_df = st.session_state.get("open_df")
+    closed = apply_period_filter(st.session_state.get("closed_df"))
+    open_df = apply_period_filter(st.session_state.get("open_df"))
     hist = pd.DataFrame()
     opens = pd.DataFrame()
-    uc = _upper_col(closed, "closed")
-    if uc is not None:
-        hist = closed.loc[uc == site]
+    if closed is not None and not getattr(closed, "empty", True) and "site_code" in closed.columns:
+        mask = closed["site_code"].astype(str).str.strip().str.upper() == site
+        hist = closed.loc[mask]
         if not hist.empty and "submitted_time" in hist.columns:
             hist = hist.sort_values("submitted_time", ascending=False)
-    uo = _upper_col(open_df, "open")
-    if uo is not None:
-        opens = open_df.loc[uo == site]
+    if open_df is not None and not getattr(open_df, "empty", True) and "site_code" in open_df.columns:
+        mask = open_df["site_code"].astype(str).str.strip().str.upper() == site
+        opens = open_df.loc[mask]
     return hist, opens
 
 

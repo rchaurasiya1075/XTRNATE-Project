@@ -5,7 +5,7 @@ import streamlit as st
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.auto_load import auto_load_tickets
-from utils.bootstrap import show_last_update
+from utils.bootstrap import show_last_update, render_period_filter, apply_period_filter
 from utils.data_source import (
     has_google,
     has_upload,
@@ -78,7 +78,9 @@ else:
         st.stop()
 
 closed = st.session_state.get("closed_df")
-n = 0 if closed is None else len(closed)
+render_period_filter()
+closed_view = apply_period_filter(closed) if closed is not None else closed
+n = 0 if closed_view is None else len(closed_view)
 src_lab = "Uploaded Excel" if mode == "upload" else "Google Sheet"
 note = st.session_state.get("data_source_note") or ""
 st.success(f"{src_lab}{(' · ' + note) if note else ''}  •  {n} tickets")
@@ -112,9 +114,9 @@ def display_filtered_site_history(site_code):
         num_months = int(m_opt.split()[0])
         
         # Original dataframe se temporary filter lagayenge (Last N Months)
-        if closed is not None and not closed.empty and "submitted_time" in closed.columns and "site_code" in closed.columns:
+        if closed_view is not None and not closed_view.empty and "submitted_time" in closed_view.columns and "site_code" in closed_view.columns:
             import pandas as pd
-            temp_df = closed.copy()
+            temp_df = closed_view.copy()
             temp_df["submitted_time"] = pd.to_datetime(temp_df["submitted_time"], errors="coerce")
             max_dt = temp_df["submitted_time"].max()
             
@@ -143,9 +145,9 @@ else:
 with st.expander("Last 30 days — 3 / 5 / 6 / 7+ downs", expanded=False):
     render_last_month_down_categories()
 
-if closed is not None and not closed.empty and "site_code" in closed.columns:
+if closed_view is not None and not closed_view.empty and "site_code" in closed_view.columns:
     with st.expander("Frequent sites in this source", expanded=False):
-        top = closed["site_code"].astype(str).str.upper().value_counts().head(12)
+        top = closed_view["site_code"].astype(str).str.upper().value_counts().head(12)
         pick = st.selectbox("Jump to site", ["—"] + list(top.index), key="freq_jump")
         st.caption("  ·  ".join(f"{k} ({int(v)})" for k, v in top.items()))
         if pick and pick != "—":
