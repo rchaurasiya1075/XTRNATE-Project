@@ -278,6 +278,61 @@ view = st.radio(
 )
 
 
+def outage_from_remark(text) -> str:
+    """Map a pending-mail remark to one outage bucket. Specific cause wins over WIP text."""
+    raw = str(text or "")
+    t = raw.lower().replace("_", " ").replace("::", " ")
+    t = t.replace("close enclosure", " ").replace("resolved enclosure", " ").replace("comment enclosure", " ")
+    if not t.strip() or t.strip() in ("nan", "none", "--"):
+        return "Others"
+
+    if any(k in t for k in (
+        "fiber cut", "fibre cut", "lan cable", "cable is not connected", "cable not connected",
+        "physical cable", "cable disconnect",
+    )):
+        return "Fiber Cut & Cable"
+
+    if any(k in t for k in (
+        "isp infra", "upstream", "upstrem", "backend", "pop end", "olt fail", "olt failure",
+        "bsnl olt",
+    )):
+        return "ISP Infra & Backend"
+
+    if any(k in t for k in (
+        "modem faulty", "modem hang", "onu", "media converter", "power outage", "olt power",
+        "device faulty", "hardware",
+    )):
+        return "Hardware & Power"
+
+    if any(k in t for k in (
+        "not feasible", "non feasible", "non flexible", "not been delivered", "not delivered",
+        "doesn't belong", "does not belong", "wrong circuit",
+    )):
+        return "Feasibility & Inventory"
+
+    if any(k in t for k in (
+        "flt", "customer end", "customers end", "customer side", "broadband working fine",
+        "no changes done", "limited support from lc",
+    )):
+        return "FLT & Customer Side"
+
+    if any(k in t for k in (
+        "link is up", "link up", "link was up", "as per update received", "confirmed by hughes",
+        "restoration confirm", "working fine now",
+    )) and not any(k in t for k in ("awaiting", "call on hold", "checking", "will visit", "etr")):
+        return "General Restoration"
+
+    if any(k in t for k in (
+        "call on hold", "on hold", "team is checking", "checking the issue", "working on the issue",
+        "etr", "ticket raised", "device sanp", "device snap", "snapshot", "fe will visit",
+        "will visit", "assign to fe", "informed to the team", "awaiting confirmation",
+        "link down",
+    )):
+        return "WIP / Status Updates"
+
+    return "Others"
+
+
 def render_mail(partner, src):
     brand = {"ONEOTT": "CELERITY", "HCIN": "HICOM"}.get(partner, partner)
     work = src[src["_partner"] == partner].copy()
@@ -285,14 +340,25 @@ def render_mail(partner, src):
         st.info(f"{partner} has no pending tickets on this sheet.")
         return
 
-    reason_col = "Down Category" if "Down Category" in work.columns else None
-    if reason_col:
-        reasons = work[reason_col].fillna("Others").astype(str).str.strip()
-        reasons = reasons.replace({"": "Others", "nan": "Others"})
+    remark_col = "Remarks" if "Remarks" in work.columns else None
+    if remark_col is None and "Down Category" in work.columns:
+        remark_col = "Down Category"
+    if remark_col:
+        reasons = work[remark_col].map(outage_from_remark)
     else:
         reasons = pd.Series(["Others"] * len(work))
+    order = [
+        "Fiber Cut & Cable",
+        "ISP Infra & Backend",
+        "Hardware & Power",
+        "Feasibility & Inventory",
+        "FLT & Customer Side",
+        "WIP / Status Updates",
+        "General Restoration",
+        "Others",
+    ]
     reason_counts = reasons.value_counts()
-    reason_tbl = [(k, int(v)) for k, v in reason_counts.items()]
+    reason_tbl = [(k, int(reason_counts[k])) for k in order if int(reason_counts.get(k, 0)) > 0]
     reason_tbl.append(("TOTAL", int(reason_counts.sum())))
 
     states = work["State"].fillna("Unknown").astype(str) if "State" in work.columns else pd.Series(["Unknown"] * len(work))
