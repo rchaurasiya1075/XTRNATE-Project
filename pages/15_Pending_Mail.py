@@ -305,10 +305,12 @@ def outage_from_remark(text) -> str:
         return "Hardware & Power"
 
     if any(k in t for k in (
-        "not feasible", "non feasible", "non flexible", "not been delivered", "not delivered",
-        "doesn't belong", "does not belong", "wrong circuit",
+        "migration", "migrat", "vendor change", "vendor changed", "new vendor",
+        "not feasible", "non feasible", "non flexible", "feasibility", "feasibl",
+        "not been delivered", "not delivered", "doesn't belong", "does not belong",
+        "wrong circuit", "alternate service provider", "isp change",
     )):
-        return "Feasibility & Inventory"
+        return "Link Migration"
 
     if any(k in t for k in (
         "flt", "customer end", "customers end", "customer side", "broadband working fine",
@@ -317,18 +319,28 @@ def outage_from_remark(text) -> str:
         return "FLT & Customer Side"
 
     if any(k in t for k in (
-        "link is up", "link up", "link was up", "as per update received", "confirmed by hughes",
-        "restoration confirm", "working fine now",
-    )) and not any(k in t for k in ("awaiting", "call on hold", "checking", "will visit", "etr")):
-        return "General Restoration"
+        "awaiting confirmation", "confirmation pending", "awaiting your confirmation",
+        "link is up from our end", "link up from our end", "pending confirmation",
+    )):
+        return "Link Up Confirmation Pending"
 
     if any(k in t for k in (
-        "call on hold", "on hold", "team is checking", "checking the issue", "working on the issue",
-        "etr", "ticket raised", "device sanp", "device snap", "snapshot", "fe will visit",
-        "will visit", "assign to fe", "informed to the team", "awaiting confirmation",
-        "link down",
+        "fe will visit", "fe visit", "will visit", "tomorrow fe", "field engineer",
     )):
-        return "WIP / Status Updates"
+        return "FE Visit"
+
+    if any(k in t for k in (
+        "ticket raised", "team is checking", "team checking", "checking the issue",
+        "working on the issue", "informed to the team", "device sanp", "device snap",
+        "snapshot", "call on hold", "on hold", "etr", "assign to fe", "link down",
+    )):
+        return "Team Checking"
+
+    if any(k in t for k in (
+        "link is up", "link up", "link was up", "as per update received", "confirmed by hughes",
+        "restoration confirm", "working fine now",
+    )):
+        return "General Restoration"
 
     return "Others"
 
@@ -351,9 +363,11 @@ def render_mail(partner, src):
         "Fiber Cut & Cable",
         "ISP Infra & Backend",
         "Hardware & Power",
-        "Feasibility & Inventory",
+        "Link Migration",
         "FLT & Customer Side",
-        "WIP / Status Updates",
+        "FE Visit",
+        "Team Checking",
+        "Link Up Confirmation Pending",
         "General Restoration",
         "Others",
     ]
