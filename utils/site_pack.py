@@ -286,6 +286,47 @@ def _month_down_map(hist):
     return {str(p): int(n) for p, n in vc.items()}
 
 
+def _reason_of(row) -> str:
+    for c in ("category", "reason_clean", "reason", "problem_class"):
+        if c in row.index:
+            v = _clean(row.get(c))
+            if v:
+                return v[:120]
+    return ""
+
+
+def _fmt_reasons(reasons) -> str:
+    items = [r for r in reasons if r]
+    if not items:
+        return ""
+    return " | ".join(f"{i}. {r}" for i, r in enumerate(items, 1))
+
+
+def _reasons_since(hist, months=None) -> str:
+    if hist is None or getattr(hist, "empty", True):
+        return ""
+    work = hist
+    ts = _ticket_ts(hist)
+    if months and ts is not None:
+        cutoff = pd.Timestamp.now() - pd.DateOffset(months=int(months))
+        work = hist.loc[ts.notna() & (ts >= cutoff)]
+    reasons = [_reason_of(row) for _, row in work.iterrows()]
+    return _fmt_reasons(reasons)
+
+
+def _month_reason_map(hist):
+    ts = _ticket_ts(hist)
+    if ts is None or hist is None or getattr(hist, "empty", True):
+        return {}
+    work = hist.copy()
+    work["_period"] = ts.dt.to_period("M")
+    out = {}
+    for p, grp in work.groupby("_period", dropna=True):
+        reasons = [_reason_of(row) for _, row in grp.iterrows()]
+        out[str(p)] = _fmt_reasons(reasons)
+    return out
+
+
 @st.cache_data(ttl=180, show_spinner=False)
 def _load_sim():
     df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("sim_inventory"))
@@ -468,7 +509,14 @@ def build_pack(codes: list[str]) -> dict:
             "downs_1m": _down_count(hist, 1),
             "downs_2m": _down_count(hist, 2),
             "downs_3m": _down_count(hist, 3),
+            "downs_4m": _down_count(hist, 4),
+            "downs_5m": _down_count(hist, 5),
             "downs_6m": _down_count(hist, 6),
+            "reasons_1m": _reasons_since(hist, 1),
+            "reasons_2m": _reasons_since(hist, 2),
+            "reasons_3m": _reasons_since(hist, 3),
+            "reasons_4m": _reasons_since(hist, 4),
+            "reasons_5m": _reasons_since(hist, 5),
             "downtime_hrs": _dt_hours(hist),
             "dt_1m_hrs": _dt_hours(hist, 1),
             "dt_2m_hrs": _dt_hours(hist, 2),
@@ -480,6 +528,7 @@ def build_pack(codes: list[str]) -> dict:
             "bank": _fill(("Bank Name", "bank_name"), prow, urow, frow, mrow, crow),
             "branch": _fill(("Branch Name", "Branch", "branch_name"), prow, urow, frow, mrow, crow),
             "state": _fill(("State", "state"), prow, urow, frow, mrow, crow, hist),
+            "city": _fill(("City", "city", "Location", "location"), prow, urow, frow, mrow, crow, hist),
             "lc_name": _fill(("Branch Person Name", "New LC Name", "lc_name"), lrow, mrow, frow),
             "lc_phone": _fill(("Contact Number", "Branch Person Contact Number", "New LC Contact", "lc_phone"), lrow, mrow, frow),
             "sim_status": _fill(("Status", "CMDB Status", "status"), prow, srow, urow),
@@ -495,17 +544,20 @@ def build_pack(codes: list[str]) -> dict:
                 val = _parse_gb(urow.iloc[0].get(col))
             rec[key] = val if val is not None else ""
         rec["_month_downs"] = _month_down_map(hist)
+        rec["_month_reasons"] = _month_reason_map(hist)
         summary_rows.append(rec)
 
     periods = sorted({p for rec in summary_rows for p in rec.get("_month_downs", {})})
     for rec in summary_rows:
         mmap = rec.pop("_month_downs", {})
+        rmap = rec.pop("_month_reasons", {})
         for p in periods:
             try:
                 label = pd.Period(p, freq="M").strftime("%b-%y")
             except Exception:
                 label = str(p)
             rec[f"downs_{label}"] = int(mmap.get(p, 0))
+            rec[f"reasons_{label}"] = rmap.get(p, "") or ""
 
     def cat(frames):
         if not frames:
@@ -530,6 +582,15 @@ def _hist_view(df):
     if df is None or df.empty:
         return pd.DataFrame()
     cols = [c for c in HIST_COLS if c in df.columns]
+    try:
+        from utils.custom_projects import get_project
+        cfg = get_project(st.session_state.get("active_project") or "")
+        for item in (cfg or {}).get("extra") or []:
+            lab = str(item.get("label") or "").strip()
+            if lab and lab in df.columns and lab not in cols:
+                cols.append(lab)
+    except Exception:
+        pass
     return df[cols] if cols else df
 
 
@@ -576,7 +637,14 @@ def render_multi_site_pack():
         "downs_1m": "Downs 1M",
         "downs_2m": "Downs 2M",
         "downs_3m": "Downs 3M",
+        "downs_4m": "Downs 4M",
+        "downs_5m": "Downs 5M",
         "downs_6m": "Downs 6M",
+        "reasons_1m": "Down reasons 1M",
+        "reasons_2m": "Down reasons 2M",
+        "reasons_3m": "Down reasons 3M",
+        "reasons_4m": "Down reasons 4M",
+        "reasons_5m": "Down reasons 5M",
         "past_downs": "Downs overall",
         "sim_number": "SIM Number",
     }
@@ -586,6 +654,8 @@ def render_multi_site_pack():
             rename[c] = f"Usage {mon} GB"
         elif c.startswith("downs_") and c not in rename:
             rename[c] = "Downs " + c.replace("downs_", "")
+        elif c.startswith("reasons_") and c not in rename:
+            rename[c] = "Reasons " + c.replace("reasons_", "")
     st.dataframe(show.rename(columns=rename), use_container_width=True, height=min(420, 48 + 32 * min(len(summary), 12)))
 
     missing = summary[summary["found"] == "No"]["site_code"].tolist() if not summary.empty else []
@@ -628,7 +698,7 @@ def render_multi_site_pack():
         ):
             a, b, c = st.columns(3)
             a.write(f"**Bank / Branch:** {row['bank'] or '—'} / {row['branch'] or '—'}")
-            a.write(f"**State:** {row['state'] or '—'}")
+            a.write(f"**State / City:** {row['state'] or '—'} / {row.get('city') or '—'}")
             a.write(f"**Media / ISP:** {row['media'] or '—'} / {row['isp'] or '—'}")
             b.write(f"**Circuit:** `{row['ckt_id'] or '—'}`")
             b.write(f"**LC:** {row['lc_name'] or '—'}  {row['lc_phone'] or ''}")
@@ -638,7 +708,8 @@ def render_multi_site_pack():
             st.caption(
                 f"Down count — overall {int(row.get('past_downs', 0))}  ·  "
                 f"1M {int(row.get('downs_1m', 0))}  ·  2M {int(row.get('downs_2m', 0))}  ·  "
-                f"3M {int(row.get('downs_3m', 0))}  ·  6M {int(row.get('downs_6m', 0))}"
+                f"3M {int(row.get('downs_3m', 0))}  ·  4M {int(row.get('downs_4m', 0))}  ·  "
+                f"5M {int(row.get('downs_5m', 0))}  ·  6M {int(row.get('downs_6m', 0))}"
             )
             cal = [
                 f"{c.replace('downs_', '')} {int(row.get(c, 0))}"
@@ -648,6 +719,17 @@ def render_multi_site_pack():
             ]
             if cal:
                 st.caption("Downs by month: " + "  ·  ".join(cal))
+            why = []
+            for c in summary.columns:
+                if not str(c).startswith("reasons_"):
+                    continue
+                txt = str(row.get(c) or "").strip()
+                if txt:
+                    why.append(f"{c.replace('reasons_', '')}: {txt}")
+            if why:
+                st.markdown("**Down reasons**")
+                for line in why:
+                    st.caption(line)
             st.caption(
                 f"Downtime hrs — overall {row.get('downtime_hrs', 0)}  ·  "
                 f"1M {row.get('dt_1m_hrs', 0)}  ·  2M {row.get('dt_2m_hrs', 0)}  ·  "

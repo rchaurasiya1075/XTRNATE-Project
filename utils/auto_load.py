@@ -61,7 +61,7 @@ def auto_load_tickets(force: bool = False):
             gid = history_gid(project)
         df = _fetch_raw_sheet(sheet_id, gid)
         if user_cols and apply_user_columns is not None:
-            df = apply_user_columns(df, user_cols)
+            df = apply_user_columns(df, user_cols, (custom or {}).get("extra"))
         if note_extra:
             note = f"Google Sheet  •  {project}  •  custom link  •  gid {gid}"
         else:

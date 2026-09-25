@@ -29,7 +29,7 @@ def init_data_source():
     try:
         from utils.custom_projects import all_projects
         for name in all_projects():
-            if name and name not in ss.projects:
+            if name and not str(name).startswith("_") and name not in ss.projects:
                 ss.projects.append(name)
     except Exception:
         pass
@@ -134,7 +134,7 @@ def ingest_tickets_file(uploaded, *, note=None) -> str:
         from utils.custom_projects import get_project, apply_user_columns
         custom = get_project(st.session_state.get("active_project") or "")
         if custom and custom.get("columns"):
-            df = apply_user_columns(df, custom.get("columns"))
+            df = apply_user_columns(df, custom.get("columns"), custom.get("extra"))
     except Exception:
         pass
     processed = process_closed_tickets(df)
@@ -288,6 +288,31 @@ def _render_custom_project(project: str):
                 key=f"cmap_txt_{project}_{key}",
                 placeholder="Column name in your Excel",
             )
+    st.markdown("**Extra columns**")
+    st.caption("Need a column that is not in the list? Add it. Name is what reports show. Excel column is the header in the file.")
+    saved_extra = list(saved.get("extra") or [])
+    n_key = f"extra_n_{project}"
+    if n_key not in st.session_state:
+        st.session_state[n_key] = max(len(saved_extra), 1)
+    if st.button("Add another column", key=f"extra_add_{project}"):
+        st.session_state[n_key] = int(st.session_state[n_key]) + 1
+        st.rerun()
+    extra_rows = []
+    for i in range(int(st.session_state[n_key])):
+        prev = saved_extra[i] if i < len(saved_extra) else {}
+        c1, c2 = st.columns(2)
+        lab = c1.text_input("Name you want", value=prev.get("label") or "", key=f"exl_{project}_{i}")
+        excel_col = prev.get("column") or ""
+        if choices:
+            opts = list(choices)
+            if excel_col and excel_col not in opts:
+                opts.append(excel_col)
+            idx = opts.index(excel_col) if excel_col in opts else 0
+            coln = c2.selectbox("Excel column", opts, index=idx, key=f"exc_{project}_{i}")
+        else:
+            coln = c2.text_input("Excel column", value=excel_col, key=f"exc_txt_{project}_{i}")
+        if str(lab).strip() and str(coln).strip() and str(coln).strip() != "—":
+            extra_rows.append({"label": str(lab).strip(), "column": str(coln).strip()})
     if st.button("Save link + columns and load", type="primary", key=f"custom_save_{project}"):
         missing = [label for key, label, req in FIELDS if req and not str(picked.get(key) or "").strip()]
         if missing:
@@ -295,7 +320,7 @@ def _render_custom_project(project: str):
         elif not extract_sheet_id(url):
             st.error("Paste a Google Sheet link first.")
         else:
-            save_project(project, url, picked, gid=parse_gid(url))
+            save_project(project, url, picked, gid=parse_gid(url), extra=extra_rows)
             from utils.auto_load import auto_load_tickets
             st.cache_data.clear()
             st.session_state.data_source = "google"
@@ -304,6 +329,46 @@ def _render_custom_project(project: str):
                 st.success(msg)
             else:
                 st.error(msg)
+            st.rerun()
+
+
+def _render_admin_delete():
+    from utils.custom_projects import admin_pin_set, check_admin_pin, delete_project, is_builtin, set_admin_pin
+
+    custom = [p for p in st.session_state.projects if not is_builtin(p)]
+    with st.expander("Admin — delete a project", expanded=False):
+        st.caption("Anyone can add a project. Only the admin PIN can delete one. Built-in projects stay.")
+        if not admin_pin_set():
+            pin1 = st.text_input("Set admin PIN", type="password", key="admin_pin_new")
+            pin2 = st.text_input("Confirm PIN", type="password", key="admin_pin_new2")
+            if st.button("Save admin PIN", key="admin_pin_save"):
+                if pin1 != pin2:
+                    st.error("PIN does not match.")
+                else:
+                    try:
+                        set_admin_pin(pin1)
+                        st.success("Admin PIN saved. Use it to delete a project.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
+            return
+        if not custom:
+            st.caption("No added project to delete.")
+            return
+        pin = st.text_input("Admin PIN", type="password", key="admin_pin_del")
+        target = st.selectbox("Project to delete", custom, key="admin_del_target")
+        if st.button("Delete project", key="admin_del_btn"):
+            if not check_admin_pin(pin):
+                st.error("Wrong admin PIN.")
+                return
+            delete_project(target)
+            st.session_state.projects = [p for p in st.session_state.projects if p != target]
+            store = st.session_state.get("project_store") or {}
+            store.pop(target, None)
+            if st.session_state.active_project == target:
+                st.session_state.active_project = "Xtranet"
+                st.session_state._view_project = None
+            st.success(f"Deleted {target}.")
             st.rerun()
 
 
@@ -333,6 +398,7 @@ def render_source_bar():
             set_project(new_p.strip())
             st.rerun()
         _render_custom_project(project)
+        _render_admin_delete()
     with r2:
         g_lab = f"Google Sheet ({g.get('n_closed') or 0} tickets)"
         u_lab = f"Manual Excel ({u.get('n_closed') or 0} tickets)"
