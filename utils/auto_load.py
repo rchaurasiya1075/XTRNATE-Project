@@ -37,14 +37,35 @@ def auto_load_tickets(force: bool = False):
         return True, "already_loaded"
 
     sheet_id = extract_sheet_id(xtranet_url()) or xtranet_id()
+    gid = None
+    note_extra = ""
+    user_cols = None
+    project = st.session_state.get("active_project") or "Xtranet"
+    try:
+        from utils.custom_projects import get_project, parse_gid, apply_user_columns
+        custom = get_project(project)
+    except Exception:
+        custom = None
+        apply_user_columns = None
+    if custom and custom.get("sheet_url"):
+        sheet_id = extract_sheet_id(custom.get("sheet_url")) or sheet_id
+        gid = int(custom.get("gid") or parse_gid(custom.get("sheet_url") or "") or 0)
+        user_cols = custom.get("columns") or {}
+        note_extra = "custom sheet"
     if not sheet_id:
         return False, "Invalid sheet ID"
 
     try:
         from utils.ticket_sync import history_gid
-        gid = history_gid(st.session_state.get("active_project") or "Xtranet")
+        if gid is None:
+            gid = history_gid(project)
         df = _fetch_raw_sheet(sheet_id, gid)
-        note = f"Google Sheet  •  {st.session_state.get('active_project') or 'Xtranet'}  •  gid {gid}"
+        if user_cols and apply_user_columns is not None:
+            df = apply_user_columns(df, user_cols)
+        if note_extra:
+            note = f"Google Sheet  •  {project}  •  custom link  •  gid {gid}"
+        else:
+            note = f"Google Sheet  •  {project}  •  gid {gid}"
         processed = process_closed_tickets(df)
 
         if processed is None or processed.empty:

@@ -26,6 +26,13 @@ def init_data_source():
         ss.project_store = {}
     if "data_source_note" not in ss:
         ss.data_source_note = ""
+    try:
+        from utils.custom_projects import all_projects
+        for name in all_projects():
+            if name and name not in ss.projects:
+                ss.projects.append(name)
+    except Exception:
+        pass
 
 
 def _empty_slot():
@@ -123,6 +130,13 @@ def ingest_tickets_file(uploaded, *, note=None) -> str:
     else:
         df = pd.read_excel(uploaded, engine="openpyxl")
     df.columns = [str(c).strip() for c in df.columns]
+    try:
+        from utils.custom_projects import get_project, apply_user_columns
+        custom = get_project(st.session_state.get("active_project") or "")
+        if custom and custom.get("columns"):
+            df = apply_user_columns(df, custom.get("columns"))
+    except Exception:
+        pass
     processed = process_closed_tickets(df)
     closed, opened = processed, None
     if processed is not None and not processed.empty and "status" in processed.columns:
@@ -218,6 +232,81 @@ def has_google() -> bool:
     return _slot_has_data(_bucket(st.session_state.active_project)["google"])
 
 
+def _render_custom_project(project: str):
+    """Sheet link + column names for a project that is not a built-in tab."""
+    from utils.custom_projects import FIELDS, get_project, is_builtin, save_project, parse_gid
+    from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
+
+    if is_builtin(project):
+        return
+    saved = get_project(project) or {}
+    st.markdown(f"**{project} — sheet link**")
+    st.caption(
+        "Paste the Google Sheet link for this project only. "
+        "Xtranet / Shell / Backhaul / Link / DGLL keep their existing tabs."
+    )
+    url = st.text_input(
+        "Google Sheet link",
+        value=saved.get("sheet_url") or "",
+        key=f"custom_url_{project}",
+        placeholder="https://docs.google.com/spreadsheets/d/…/edit?gid=…",
+    )
+    if st.button("Read column names", key=f"custom_read_{project}"):
+        sid = extract_sheet_id(url)
+        if not sid:
+            st.error("Link is not a Google Sheet.")
+        else:
+            try:
+                raw = load_sheet_as_csv(sid, gid=parse_gid(url))
+                headers = [str(c).strip() for c in list(raw.columns)]
+                st.session_state[f"custom_headers_{project}"] = headers
+                st.success(f"{len(headers)} columns found.")
+            except Exception as e:
+                st.error(str(e)[:240])
+    headers = st.session_state.get(f"custom_headers_{project}") or []
+    if headers:
+        st.caption("Columns in this file: " + " · ".join(headers[:40]))
+    st.markdown("**Which column is which?**")
+    st.caption("Type the exact column name from this Excel. Leave blank if that field is not in the file.")
+    cols = saved.get("columns") or {}
+    picked = {}
+    choices = ["—"] + headers if headers else None
+    for key, label, required in FIELDS:
+        star = " *" if required else ""
+        current = cols.get(key) or ""
+        if choices:
+            opts = list(choices)
+            if current and current not in opts:
+                opts.append(current)
+            idx = opts.index(current) if current in opts else 0
+            val = st.selectbox(f"{label}{star}", opts, index=idx, key=f"cmap_{project}_{key}")
+            picked[key] = "" if val == "—" else val
+        else:
+            picked[key] = st.text_input(
+                f"{label}{star}",
+                value=current,
+                key=f"cmap_txt_{project}_{key}",
+                placeholder="Column name in your Excel",
+            )
+    if st.button("Save link + columns and load", type="primary", key=f"custom_save_{project}"):
+        missing = [label for key, label, req in FIELDS if req and not str(picked.get(key) or "").strip()]
+        if missing:
+            st.error("Fill required columns: " + ", ".join(missing))
+        elif not extract_sheet_id(url):
+            st.error("Paste a Google Sheet link first.")
+        else:
+            save_project(project, url, picked, gid=parse_gid(url))
+            from utils.auto_load import auto_load_tickets
+            st.cache_data.clear()
+            st.session_state.data_source = "google"
+            ok, msg = auto_load_tickets(force=True)
+            if ok:
+                st.success(msg)
+            else:
+                st.error(msg)
+            st.rerun()
+
+
 def render_source_bar():
     """Project + Google vs Manual Excel. Safe to call on Home / Upload."""
     init_data_source()
@@ -243,6 +332,7 @@ def render_source_bar():
         if st.button("Add project", key="proj_add_btn") and new_p.strip():
             set_project(new_p.strip())
             st.rerun()
+        _render_custom_project(project)
     with r2:
         g_lab = f"Google Sheet ({g.get('n_closed') or 0} tickets)"
         u_lab = f"Manual Excel ({u.get('n_closed') or 0} tickets)"
