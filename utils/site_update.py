@@ -8,7 +8,8 @@ import pandas as pd
 import streamlit as st
 
 from utils.excel_export import excel_bytes
-from utils.sheets_config import all_config, save_config, xtranet_id, tab_url
+from utils.sheets_config import all_config, save_config, xtranet_id, tab_url, gid as sheet_gid
+from utils.google_sheets import load_sheet_as_csv
 from utils.site_pack import (
     _fill,
     _fill_mdn,
@@ -70,6 +71,97 @@ def _site_key(v) -> str:
     return _as_text(v).upper()
 
 
+def _norm_remark(v) -> str:
+    return _as_text(v).lower().replace("_", " ")
+
+
+def _is_vendor(t: str) -> bool:
+    if "alternate service provider" in t or "provisioned on alternate" in t:
+        return True
+    if "existing operator" in t and "not stable" in t:
+        return True
+    keys = (
+        "vendor change",
+        "change of vendor",
+        "vendor changed",
+        "change service provider",
+        "changed service provider",
+        "link delivered",
+        "link deliver",
+    )
+    return any(k in t for k in keys)
+
+
+def _is_not_feasible(t: str) -> bool:
+    keys = (
+        "technically not feasible",
+        "technical not feasible",
+        "not feasible",
+        "rolled back by isp",
+    )
+    return any(k in t for k in keys)
+
+
+def _new_mile_from_remark(t: str) -> str:
+    if "alternate service provider" in t or "provisioned on alternate" in t:
+        return "Alternate service provider"
+    if "link delivered" in t or "link deliver" in t:
+        return "Link delivered"
+    if _is_vendor(t):
+        return "Vendor changed"
+    return ""
+
+
+@st.cache_data(ttl=180, show_spinner=False)
+def _ticket_updates() -> dict:
+    """Latest remark per site from the Xtranet ticket tab. Not the filtered report view."""
+    try:
+        df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("tickets_xtranet"))
+    except Exception:
+        return {}
+    if df is None or df.empty:
+        return {}
+    df.columns = [str(c).strip() for c in df.columns]
+    site_col = next((c for c in df.columns if c.lower() in ("request title", "site code", "sitecode")), None)
+    remark_col = next((c for c in df.columns if "last enclosure" in c.lower()), None)
+    time_col = next((c for c in df.columns if c.lower() == "submitted time"), None)
+    id_col = next((c for c in df.columns if c.lower() == "incident id"), None)
+    if site_col is None:
+        return {}
+    work = df.copy()
+    work["_site"] = work[site_col].map(_site_key)
+    work = work[work["_site"].str.len() >= 4]
+    if time_col:
+        work["_ts"] = pd.to_datetime(work[time_col], errors="coerce")
+    else:
+        work["_ts"] = pd.NaT
+    work = work.sort_values("_ts")
+    out = {}
+    for site, grp in work.groupby("_site", sort=False):
+        remarks = []
+        for _, row in grp.iterrows():
+            text = _norm_remark(row.get(remark_col)) if remark_col else ""
+            remarks.append(text)
+        last = remarks[-1] if remarks else ""
+        vendor = next((r for r in reversed(remarks) if _is_vendor(r)), "")
+        update = ""
+        new_mile = ""
+        if last and _is_not_feasible(last):
+            update = "Non Feasible"
+        elif vendor:
+            update = "Vendor Change"
+            new_mile = _new_mile_from_remark(vendor)
+        last_row = grp.iloc[-1]
+        out[site] = {
+            "update": update,
+            "new_last_mile": new_mile,
+            "last_remark": _as_text(last_row.get(remark_col)) if remark_col else "",
+            "last_ticket": _as_text(last_row.get(id_col)) if id_col else "",
+            "last_time": _as_text(last_row.get(time_col)) if time_col else "",
+        }
+    return out
+
+
 def _load_frames():
     return {
         "primary": _safe_load(_load_primary),
@@ -119,11 +211,18 @@ def _index_sites(df) -> dict:
 
 def build_live_master(codes: list[str] | None = None) -> pd.DataFrame:
     frames = _load_frames()
+    flags = _ticket_updates()
     if not codes:
         codes = _all_codes(frames)
+        have = set(codes)
+        for s in flags:
+            if s not in have:
+                codes.append(s)
+                have.add(s)
     usage = frames["usage"]
     gb_cols = _gb_month_cols(usage.columns) if usage is not None and not usage.empty else []
     maps = {k: _index_sites(v) for k, v in frames.items()}
+    flags = _ticket_updates()
     rows = []
     for site in codes:
         prow = _row_frame(maps["primary"], site)
@@ -131,29 +230,29 @@ def build_live_master(codes: list[str] | None = None) -> pd.DataFrame:
         frow = _row_frame(maps["fallback"], site)
         srow = _row_frame(maps["sim"], site)
         crow = _row_frame(maps["ckt"], site)
-        lrow = _row_frame(maps["lc"], site)
         mrow = _row_frame(maps["master"], site)
+        flag = flags.get(site) or {}
+        new_mile = _fill(("New Last Mile", "New Last Mile Media", "New Last Mile ISP"), prow, frow, mrow)
+        if not new_mile:
+            new_mile = flag.get("new_last_mile") or ""
         rec = {
             "Site Code": site,
             "Bank Name": _fill(("Bank Name", "bank_name"), prow, urow, frow, mrow, crow),
             "Branch Name": _fill(("Branch Name", "Branch", "branch_name"), prow, urow, frow, mrow, crow),
             "State": _fill(("State", "state"), prow, urow, frow, mrow, crow),
             "Branch Address": _fill(("Branch Address", "address"), prow, urow, frow, mrow, crow),
-            "Last Mile": _fill(("Last Mile", "Media", "New Last Mile Media"), prow, urow, frow, mrow),
-            "ISP": _fill(("ISP Name", "ISP", "isp", "Partner", "Last Mile"), urow, frow, mrow, crow, prow),
-            "Partner": _fill(("Partner",), frow, mrow, prow),
+            "Last Mile": _fill(("Last Mile", "Media"), prow, urow, frow, mrow),
+            "New Last mile": new_mile,
             "CKT ID": _fill(("CKT ID", "Ckt ID", "ckt_id"), prow, urow, frow, mrow, crow),
             "Telco": _fill(("Telco", "telco"), prow, urow, srow),
             "SIM Number": _fill(("SIMNumber", "SIM Number", "SIMS", "Asset Number"), prow, urow, srow),
             "Status": _fill(("Status", "CMDB Status", "status"), prow, srow, urow),
             "MDN Number": _fill_mdn(prow, urow, srow),
             "IP Address": _fill(("IP Address", "IP", "ip"), prow, urow, srow),
-            "LC Name": _fill(("Branch Person Name", "New LC Name", "lc_name"), lrow, mrow, frow),
-            "LC Phone": _fill(
-                ("Contact Number", "Branch Person Contact Number", "New LC Contact", "lc_phone"),
-                lrow, mrow, frow,
-            ),
-            "Remarks": "",
+            "Site Update": flag.get("update") or "",
+            "Last Remark": flag.get("last_remark") or "",
+            "Last Ticket": flag.get("last_ticket") or "",
+            "Last Ticket Time": flag.get("last_time") or "",
         }
         for mon, col in gb_cols:
             val = None
@@ -275,6 +374,24 @@ def template_excel() -> bytes:
         title="Site bulk update format",
         subtitle="Fill Site Code + changed fields only",
     )
+
+
+def master_export(df: pd.DataFrame) -> pd.DataFrame:
+    """Column order the master sheet uses."""
+    if df is None or getattr(df, "empty", True):
+        return df
+    head = [
+        "Site Code", "Bank Name", "Branch Name", "State", "Branch Address",
+        "Last Mile", "New Last mile", "CKT ID", "Telco", "SIM Number", "Status",
+        "MDN Number", "IP Address", "Site Update", "Last Remark", "Last Ticket", "Last Ticket Time",
+    ]
+    cols = [c for c in head if c in df.columns] + [c for c in df.columns if c not in head]
+    return df[cols].rename(columns={
+        "Site Code": "Sitecode",
+        "Telco": "Sim Telco",
+        "SIM Number": "SIMNumber",
+        "IP Address": "Sim IP Address",
+    })
 
 
 def full_excel(df: pd.DataFrame) -> bytes:

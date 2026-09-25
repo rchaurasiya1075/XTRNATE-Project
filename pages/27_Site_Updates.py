@@ -16,6 +16,7 @@ from utils.site_update import (
     combined_master,
     ensure_format_and_master,
     full_excel,
+    master_export,
     parse_site_codes,
     template_excel,
 )
@@ -36,7 +37,11 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 with tab1:
-    st.markdown("Live sheets + anything already on **Updated_Master**. One row per site.")
+    st.markdown(
+        "One row per site from the site master sheet. "
+        "Ticket remarks mark **Non Feasible** (last remark is technically not feasible and no ticket after it) "
+        "or **Vendor Change** (link moved to an alternate provider)."
+    )
     scope = st.radio("Which sites?", ["All sites", "Paste site codes"], horizontal=True)
     codes = None
     if scope == "Paste site codes":
@@ -50,11 +55,12 @@ with tab1:
         if df is None or df.empty:
             st.warning("No rows.")
         else:
-            st.success(f"{len(df)} sites")
-            st.dataframe(df.head(50), use_container_width=True, height=360)
+            view = master_export(df)
+            st.success(f"{len(view)} sites")
+            st.dataframe(view.head(50), use_container_width=True, height=360)
             st.download_button(
                 "Download Excel — all site details",
-                data=full_excel(df),
+                data=full_excel(view),
                 file_name="Xtranet_All_Sites_Updated.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
