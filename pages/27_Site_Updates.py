@@ -39,8 +39,9 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.markdown(
         "One row per site from the site master sheet. "
-        "Ticket remarks mark **Non Feasible** (last remark is technically not feasible and no ticket after it) "
-        "or **Vendor Change** (link moved to an alternate provider)."
+        "Ticket remarks mark **Non Feasible** with the TT date and ISP (HCIN / ONEOTT). "
+        "If no feasibility came after that date, billing says stop payment from that day. "
+        "Excel has a **Stop_Payment** sheet with only those sites."
     )
     scope = st.radio("Which sites?", ["All sites", "Paste site codes"], horizontal=True)
     codes = None
@@ -56,7 +57,15 @@ with tab1:
             st.warning("No rows.")
         else:
             view = master_export(df)
-            st.success(f"{len(view)} sites")
+            stop = view[view["Billing"].astype(str).str.startswith("Stop")] if "Billing" in view.columns else view.iloc[0:0]
+            st.success(f"{len(view)} sites  •  stop payment: {len(stop)}")
+            if not stop.empty:
+                st.markdown("**Stop payment — non feasible, no feasibility after that date**")
+                show = [c for c in [
+                    "Sitecode", "ISP", "Non Feasible On", "Non Feasible TT",
+                    "Feasibility After", "Billing", "State", "Last Mile",
+                ] if c in stop.columns]
+                st.dataframe(stop[show], use_container_width=True, height=280)
             st.dataframe(view.head(50), use_container_width=True, height=360)
             st.download_button(
                 "Download Excel — all site details",

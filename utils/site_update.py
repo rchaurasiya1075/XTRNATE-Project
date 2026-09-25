@@ -102,7 +102,47 @@ def _is_not_feasible(t: str) -> bool:
     return any(k in t for k in keys)
 
 
+def _is_feasibility_back(t: str) -> bool:
+    """A later ticket that shows the site became feasible. Not another 'not feasible'."""
+    if not t or _is_not_feasible(t):
+        return False
+    keys = (
+        "link delivered",
+        "link deliver",
+        "site delivered",
+        "feasibility done",
+        "feasibility completed",
+        "feasibility received",
+        "feasibility ok",
+        "link commissioned",
+        "is feasible",
+        "now feasible",
+        "feasible from",
+    )
+    if any(k in t for k in keys):
+        return True
+    if "feasible" in t:
+        return True
+    return False
+
+
+def _fmt_day(ts) -> str:
+    try:
+        if ts is None or pd.isna(ts):
+            return ""
+        return pd.Timestamp(ts).strftime("%d-%b-%Y")
+    except Exception:
+        return ""
+
+
 def _new_mile_from_remark(t: str) -> str:
+    if "alternate service provider" in t or "provisioned on alternate" in t:
+        return "Alternate service provider"
+    if "link delivered" in t or "link deliver" in t:
+        return "Link delivered"
+    if _is_vendor(t):
+        return "Vendor changed"
+    return ""
     if "alternate service provider" in t or "provisioned on alternate" in t:
         return "Alternate service provider"
     if "link delivered" in t or "link deliver" in t:
@@ -126,6 +166,7 @@ def _ticket_updates() -> dict:
     remark_col = next((c for c in df.columns if "last enclosure" in c.lower()), None)
     time_col = next((c for c in df.columns if c.lower() == "submitted time"), None)
     id_col = next((c for c in df.columns if c.lower() == "incident id"), None)
+    owner_col = next((c for c in df.columns if c.lower() == "owner"), None)
     if site_col is None:
         return {}
     work = df.copy()
@@ -137,27 +178,69 @@ def _ticket_updates() -> dict:
         work["_ts"] = pd.NaT
     work = work.sort_values("_ts")
     out = {}
+    from utils.data_processing import classify_isp
     for site, grp in work.groupby("_site", sort=False):
-        remarks = []
+        items = []
         for _, row in grp.iterrows():
             text = _norm_remark(row.get(remark_col)) if remark_col else ""
-            remarks.append(text)
+            items.append({
+                "text": text,
+                "raw": _as_text(row.get(remark_col)) if remark_col else "",
+                "ts": row.get("_ts"),
+                "id": _as_text(row.get(id_col)) if id_col else "",
+                "owner": _as_text(row.get(owner_col)) if owner_col else "",
+            })
+        remarks = [r["text"] for r in items]
         last = remarks[-1] if remarks else ""
         vendor = next((r for r in reversed(remarks) if _is_vendor(r)), "")
+        nf_idx = None
+        for i, r in enumerate(items):
+            if _is_not_feasible(r["text"]):
+                nf_idx = i
+        nf_on = ""
+        nf_isp = ""
+        nf_tt = ""
+        feas_after = ""
+        feas_detail = ""
+        billing = ""
         update = ""
         new_mile = ""
-        if last and _is_not_feasible(last):
-            update = "Non Feasible"
+        if nf_idx is not None:
+            nf = items[nf_idx]
+            nf_on = _fmt_day(nf["ts"])
+            nf_isp = classify_isp(nf["owner"])
+            nf_tt = nf["id"]
+            later = items[nf_idx + 1:]
+            came = [r for r in later if _is_feasibility_back(r["text"])]
+            if came:
+                first = came[0]
+                feas_after = "Yes"
+                feas_detail = f"{_fmt_day(first['ts'])} {first['id']} {first['raw'][:160]}".strip()
+                billing = f"Do not stop — feasibility on {_fmt_day(first['ts']) or 'later ticket'}"
+                update = "Feasibility returned"
+            else:
+                feas_after = "No"
+                update = "Non Feasible"
+                who = nf_isp if nf_isp and nf_isp != "UNKNOWN" else (nf["owner"] or "ISP")
+                billing = f"Stop payment to {who} from {nf_on or 'non-feasible date'} — no feasibility after this TT"
+                if later:
+                    feas_detail = f"{len(later)} ticket(s) after this date, none are feasibility"
         elif vendor:
             update = "Vendor Change"
             new_mile = _new_mile_from_remark(vendor)
-        last_row = grp.iloc[-1]
+        last_row = items[-1] if items else {}
         out[site] = {
             "update": update,
             "new_last_mile": new_mile,
-            "last_remark": _as_text(last_row.get(remark_col)) if remark_col else "",
-            "last_ticket": _as_text(last_row.get(id_col)) if id_col else "",
-            "last_time": _as_text(last_row.get(time_col)) if time_col else "",
+            "last_remark": last_row.get("raw") or "",
+            "last_ticket": last_row.get("id") or "",
+            "last_time": _fmt_day(last_row.get("ts")) or _as_text(last_row.get("ts")),
+            "nf_on": nf_on,
+            "nf_isp": nf_isp,
+            "nf_tt": nf_tt,
+            "feas_after": feas_after,
+            "feas_detail": feas_detail,
+            "billing": billing,
         }
     return out
 
@@ -250,6 +333,12 @@ def build_live_master(codes: list[str] | None = None) -> pd.DataFrame:
             "MDN Number": _fill_mdn(prow, urow, srow),
             "IP Address": _fill(("IP Address", "IP", "ip"), prow, urow, srow),
             "Site Update": flag.get("update") or "",
+            "Non Feasible On": flag.get("nf_on") or "",
+            "ISP": flag.get("nf_isp") or "",
+            "Non Feasible TT": flag.get("nf_tt") or "",
+            "Feasibility After": flag.get("feas_after") or "",
+            "Feasibility After Detail": flag.get("feas_detail") or "",
+            "Billing": flag.get("billing") or "",
             "Last Remark": flag.get("last_remark") or "",
             "Last Ticket": flag.get("last_ticket") or "",
             "Last Ticket Time": flag.get("last_time") or "",
@@ -383,7 +472,9 @@ def master_export(df: pd.DataFrame) -> pd.DataFrame:
     head = [
         "Site Code", "Bank Name", "Branch Name", "State", "Branch Address",
         "Last Mile", "New Last mile", "CKT ID", "Telco", "SIM Number", "Status",
-        "MDN Number", "IP Address", "Site Update", "Last Remark", "Last Ticket", "Last Ticket Time",
+        "MDN Number", "IP Address", "Site Update", "Non Feasible On", "ISP",
+        "Non Feasible TT", "Feasibility After", "Feasibility After Detail", "Billing",
+        "Last Remark", "Last Ticket", "Last Ticket Time",
     ]
     cols = [c for c in head if c in df.columns] + [c for c in df.columns if c not in head]
     return df[cols].rename(columns={
@@ -395,8 +486,12 @@ def master_export(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def full_excel(df: pd.DataFrame) -> bytes:
+    sheets = {"All_Sites": df}
+    if df is not None and not getattr(df, "empty", True) and "Billing" in df.columns:
+        stop = df[df["Billing"].astype(str).str.startswith("Stop")].copy()
+        sheets["Stop_Payment"] = stop
     return excel_bytes(
-        {"All_Sites": df},
+        sheets,
         title="All sites — updated master",
         subtitle=datetime.now(IST).strftime("%d-%b-%Y %H:%M IST"),
     )
