@@ -110,17 +110,32 @@ if "site_master" not in st.session_state:
     st.session_state.site_master = None
 init_data_source()
 
+from utils.access_gate import ensure_logged_in, is_admin
+
+if not ensure_logged_in():
+    st.stop()
+
 home = st.Page("home_page.py", title="Home", icon="📡", default=True)
 
-tickets = [
-    st.Page("pages/0_Site_Search.py", title="Site Search", icon="🔍"),
-    st.Page("pages/1_Dashboard.py", title="Dashboard", icon="📊"),
-    st.Page("pages/23_Multi_Site_Tracker.py", title="Multi Site Tracker", icon="📋"),
-    st.Page("pages/4_Open_Escalation.py", title="Open Escalation", icon="🚨"),
-    st.Page("pages/7_Open_Calls_Dashboard.py", title="Open Calls", icon="📞"),
-    st.Page("pages/3_Closed_Analysis.py", title="Closed Analysis", icon="✅"),
-    st.Page("pages/6_Repeat_Analysis.py", title="Repeat Analysis", icon="🔁"),
-]
+if is_admin():
+    tickets = [
+        st.Page("pages/0_Site_Search.py", title="Site Search", icon="🔍"),
+        st.Page("pages/1_Dashboard.py", title="Dashboard", icon="📊"),
+        st.Page("pages/23_Multi_Site_Tracker.py", title="Multi Site Tracker", icon="📋"),
+        st.Page("pages/4_Open_Escalation.py", title="Open Escalation", icon="🚨"),
+        st.Page("pages/7_Open_Calls_Dashboard.py", title="Open Calls", icon="📞"),
+        st.Page("pages/3_Closed_Analysis.py", title="Closed Analysis", icon="✅"),
+        st.Page("pages/6_Repeat_Analysis.py", title="Repeat Analysis", icon="🔁"),
+    ]
+else:
+    tickets = [
+        st.Page("pages/0_Site_Search.py", title="Site Search", icon="🔍"),
+        st.Page("pages/1_Dashboard.py", title="Dashboard", icon="📊"),
+        st.Page("pages/4_Open_Escalation.py", title="Open Escalation", icon="🚨"),
+        st.Page("pages/7_Open_Calls_Dashboard.py", title="Open Calls", icon="📞"),
+        st.Page("pages/3_Closed_Analysis.py", title="Closed Analysis", icon="✅"),
+        st.Page("pages/6_Repeat_Analysis.py", title="Repeat Analysis", icon="🔁"),
+    ]
 isp_partner = [
     st.Page("pages/8_ISP_Comparison.py", title="ISP Comparison", icon="⚖️"),
     st.Page("pages/12_Partner_Report.py", title="Partner Report", icon="📄"),
@@ -153,13 +168,21 @@ tools = [
     st.Page("pages/5_Escalation_Matrix.py", title="Escalation Matrix", icon="⚙️"),
 ]
 
-pg = st.navigation({
+nav = {
     "Home": [home],
     "Tickets": tickets,
     "ISP & Partner": isp_partner,
     "SLA & Reports": sla_reports,
     "Daily Ops": daily_ops,
-    "SIM & Last Mile": sim_lastmile,
-    "Tools": tools,
-})
+}
+if is_admin():
+    nav["SIM & Last Mile"] = sim_lastmile
+    nav["Tools"] = tools
+else:
+    nav["Tools"] = [
+        st.Page("pages/24_Excel_to_PPT.py", title="Excel to PPT", icon="🎬"),
+        st.Page("pages/2_Upload_Data.py", title="Upload Data", icon="📤"),
+    ]
+
+pg = st.navigation(nav)
 pg.run()

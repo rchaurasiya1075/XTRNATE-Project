@@ -217,8 +217,12 @@ def render_project_pick():
     init_data_source()
     opts = list(st.session_state.projects)
     cur = st.session_state.active_project
-    if cur not in opts:
-        opts = [cur] + opts
+    if cur not in opts and opts:
+        cur = opts[0]
+        st.session_state.active_project = cur
+    if len(opts) <= 1:
+        st.caption(f"Project: **{cur}**")
+        return
     idx = opts.index(cur) if cur in opts else 0
     picked = st.selectbox("Project data", opts, index=idx)
     if picked != cur:

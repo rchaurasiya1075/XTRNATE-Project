@@ -57,13 +57,17 @@ if site_q and (search_btn or site_q):
     render_site_history_panel(site_q.strip().upper())
 
 st.markdown('<div class="search-card">', unsafe_allow_html=True)
-st.markdown("**📋 Multi Site Tracker** — paste many site codes (comma / space / new line)")
-st.caption("Each site: ticket history + SIM + last mile + LC + circuit. Click Load all sites.")
-try:
-    render_multi_site_pack()
-except Exception as e:
-    st.error("Multi Site Tracker failed to load.")
-    st.caption(str(e)[:240])
+from utils.access_gate import is_admin
+if is_admin():
+    st.markdown("**📋 Multi Site Tracker** — paste many site codes (comma / space / new line)")
+    st.caption("Each site: ticket history + SIM + last mile + LC + circuit. Click Load all sites.")
+    try:
+        render_multi_site_pack()
+    except Exception as e:
+        st.error("Multi Site Tracker failed to load.")
+        st.caption(str(e)[:240])
+else:
+    st.caption("Multi Site Tracker is available on the admin passcode. Your reports use only your project.")
 st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("### ISP / Partner filter")
@@ -82,12 +86,13 @@ if st.button("🔄 Force Refresh Google Sheet"):
     else:
         st.error(msg)
 
-st.caption(
-    "Xtranet history keeps old rows. Sync adds new Incident IDs from the daily open sheet "
-    "and marks tickets Resolved when they drop off that list. "
-    "Shell / Other: pick the project — data comes from their own tabs (not this daily list)."
-)
-if st.button("➕ Sync daily tickets (add new + mark resolved)", type="primary"):
+from utils.access_gate import is_admin as _is_admin
+if _is_admin():
+    st.caption(
+        "Xtranet history keeps old rows. Sync adds new Incident IDs from the daily open sheet "
+        "and marks tickets Resolved when they drop off that list."
+    )
+if _is_admin() and st.button("➕ Sync daily tickets (add new + mark resolved)", type="primary"):
     from utils.ticket_sync import sync_daily_tickets
     st.cache_data.clear()
     with st.spinner("Comparing daily open sheet with Xtranet history…"):

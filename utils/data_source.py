@@ -33,6 +33,11 @@ def init_data_source():
                 ss.projects.append(name)
     except Exception:
         pass
+    try:
+        from utils.access_gate import apply_access_scope
+        apply_access_scope()
+    except Exception:
+        pass
 
 
 def _empty_slot():
@@ -389,16 +394,24 @@ def render_source_bar():
     with r1:
         opts = st.session_state.projects
         idx = opts.index(project) if project in opts else 0
-        picked = st.selectbox("Client / project", opts, index=idx)
-        if picked != project:
-            set_project(picked)
-            st.rerun()
-        new_p = st.text_input("Add project", placeholder="e.g. Shell East", key="proj_add_name")
-        if st.button("Add project", key="proj_add_btn") and new_p.strip():
-            set_project(new_p.strip())
-            st.rerun()
-        _render_custom_project(project)
-        _render_admin_delete()
+        from utils.access_gate import is_admin, render_passcode_admin
+        if is_admin() or len(opts) > 1:
+            picked = st.selectbox("Client / project", opts, index=idx)
+            if picked != project:
+                set_project(picked)
+                st.rerun()
+        else:
+            st.caption(f"Project: **{project}**")
+        if is_admin():
+            new_p = st.text_input("Add project", placeholder="e.g. Shell East", key="proj_add_name")
+            if st.button("Add project", key="proj_add_btn") and new_p.strip():
+                set_project(new_p.strip())
+                st.rerun()
+            _render_custom_project(project)
+            _render_admin_delete()
+            render_passcode_admin()
+        elif not st.session_state.get("access_admin"):
+            st.caption("This passcode opens only this project.")
     with r2:
         g_lab = f"Google Sheet ({g.get('n_closed') or 0} tickets)"
         u_lab = f"Manual Excel ({u.get('n_closed') or 0} tickets)"
