@@ -11,7 +11,7 @@ from utils.firebase_store import firebase_ready, upsert, list_all
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
-st.set_page_config(page_title="Vendor Change | XTRNATE", page_icon="🔄", layout="wide")
+st.set_page_config(page_title="Vendor Change | Opsora", page_icon="🔄", layout="wide")
 
 st.title("🔄 Vendor Change Register")
 st.caption("Vendor-change tickets from remarks → save to Firebase • site-wise restore / status update")

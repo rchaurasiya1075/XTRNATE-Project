@@ -10,7 +10,7 @@ from utils.bootstrap import ensure_ready
 from utils.data_source import render_source_bar, save_google, save_upload, set_source
 from utils.sheets_config import xtranet_url
 
-st.set_page_config(page_title="Upload Data | Xtranet", page_icon="📤", layout="wide")
+st.set_page_config(page_title="Upload Data | Opsora", page_icon="📤", layout="wide")
 
 st.title("📤 Upload Data")
 st.caption("Manual Excel and Google Sheet are stored separately. Choose which one all reports should use.")

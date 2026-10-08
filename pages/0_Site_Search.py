@@ -17,7 +17,7 @@ from utils.data_source import (
 )
 from utils.site_search import render_last_month_down_categories, render_site_history_panel
 
-st.set_page_config(page_title="Site Search | Xtranet", page_icon="🔍", layout="wide")
+st.set_page_config(page_title="Site Search | Opsora", page_icon="🔍", layout="wide")
 init_data_source()
 ensure_project_loaded()
 

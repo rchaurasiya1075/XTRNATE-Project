@@ -12,7 +12,7 @@ from utils.sheets_config import xtranet_id, gid as sheet_gid, tab_url
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
-st.set_page_config(page_title="SIM Inventory | XTRNATE", page_icon="📱", layout="wide")
+st.set_page_config(page_title="SIM Inventory | Opsora", page_icon="📱", layout="wide")
 ensure_ready()
 
 st.title("📱 SIM Inventory")

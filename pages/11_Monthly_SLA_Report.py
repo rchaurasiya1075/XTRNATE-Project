@@ -14,7 +14,7 @@ from utils.bootstrap import ensure_ready, apply_isp_filter, isp_label
 from utils.pdf_export import pdf_bytes
 
 st.set_page_config(
-    page_title="Monthly SLA Report | XTRNATE", page_icon="📅", layout="wide"
+    page_title="Monthly SLA Report | Opsora", page_icon="📅", layout="wide"
 )
 ensure_ready()
 

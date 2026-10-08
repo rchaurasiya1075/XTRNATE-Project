@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.google_sheets import extract_sheet_id
 from utils.sheets_config import all_config, save_config, edit_url, tab_url, csv_url
 
-st.set_page_config(page_title="Sheet Links | Xtranet", page_icon="🔗", layout="wide")
+st.set_page_config(page_title="Sheet Links | Opsora", page_icon="🔗", layout="wide")
 
 st.title("🔗 Sheet Links")
 st.caption(

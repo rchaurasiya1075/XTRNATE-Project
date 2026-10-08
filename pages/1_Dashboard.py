@@ -13,7 +13,7 @@ from utils.site_search import render_site_history_panel
 from utils.report_download import download_pack
 from utils.site_pack import render_multi_site_pack
 
-st.set_page_config(page_title="Dashboard | XTRNATE", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Dashboard | Opsora", page_icon="📊", layout="wide")
 
 st.markdown("""
 <style>

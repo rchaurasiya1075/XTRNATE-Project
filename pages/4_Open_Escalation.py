@@ -12,7 +12,7 @@ from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
-st.set_page_config(page_title="Open Escalation | XTRNATE", page_icon="🚨", layout="wide")
+st.set_page_config(page_title="Open Escalation | Opsora", page_icon="🚨", layout="wide")
 
 st.title("🚨 Open Tickets & Live Escalation + Site History")
 

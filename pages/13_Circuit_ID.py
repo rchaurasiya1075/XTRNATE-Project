@@ -13,7 +13,7 @@ from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 from utils.sheets_config import xtranet_id, xtranet_url, gid as sheet_gid
 
-st.set_page_config(page_title="Circuit ID | XTRNATE", page_icon="🔌", layout="wide")
+st.set_page_config(page_title="Circuit ID | Opsora", page_icon="🔌", layout="wide")
 ensure_ready()
 
 st.markdown("""

@@ -18,7 +18,7 @@ from utils.sheets_config import xtranet_id, ops_id, gid as sheet_gid, csv_url, e
 
 IST = ZoneInfo("Asia/Kolkata")
 
-st.set_page_config(page_title="Last Mile Update | XTRNATE", page_icon="📍", layout="wide")
+st.set_page_config(page_title="Last Mile Update | Opsora", page_icon="📍", layout="wide")
 ensure_ready()
 
 st.title("Last Mile / LC Contact Update")

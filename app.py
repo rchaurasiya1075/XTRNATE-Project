@@ -6,7 +6,7 @@ sys.path.append(os.path.dirname(__file__))
 from utils.data_source import init_data_source
 
 st.set_page_config(
-    page_title="Xtranet NOC | Command Center",
+    page_title="Opsora | Reports",
     page_icon="📡",
     layout="wide",
     initial_sidebar_state="expanded",

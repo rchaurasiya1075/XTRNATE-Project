@@ -12,7 +12,7 @@ from utils.holiday_sla import PUBLIC, adjust_ticket, parse_extra_dates
 from utils.data_processing import isp_options, classify_isp
 from utils.pdf_export import pdf_bytes
 
-st.set_page_config(page_title="Holiday Downtime | XTRNATE", page_icon="🎉", layout="wide")
+st.set_page_config(page_title="Holiday Downtime | Opsora", page_icon="🎉", layout="wide")
 ensure_ready()
 
 st.title("🎉 Holiday Adjusted Downtime")

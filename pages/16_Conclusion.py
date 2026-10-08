@@ -16,7 +16,7 @@ from utils.remark_tags import apply_tags, dt_hrs
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
-st.set_page_config(page_title="Conclusion | XTRNATE", page_icon="🧠", layout="wide")
+st.set_page_config(page_title="Conclusion | Opsora", page_icon="🧠", layout="wide")
 ensure_ready()
 
 st.title("🧠 Conclusion Dashboard")

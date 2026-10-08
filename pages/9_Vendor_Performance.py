@@ -11,7 +11,7 @@ from utils.bootstrap import ensure_ready, apply_isp_filter
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
-st.set_page_config(page_title="Vendor Performance | XTRNATE", page_icon="🏭", layout="wide")
+st.set_page_config(page_title="Vendor Performance | Opsora", page_icon="🏭", layout="wide")
 
 st.title("🏭 Vendor / Partner Performance Metrics")
 st.markdown("Owner / Partner wise tickets, downtime, resolution time aur repeat analysis")

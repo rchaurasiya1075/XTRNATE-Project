@@ -17,7 +17,7 @@ from utils.sheet_write import (
 )
 from utils.sheets_config import xtranet_id, ops_id, gid as sheet_gid, csv_url
 
-st.set_page_config(page_title="LC Master | XTRNATE", page_icon="📋", layout="wide")
+st.set_page_config(page_title="LC Master | Opsora", page_icon="📋", layout="wide")
 ensure_ready()
 
 st.title("LC Master")

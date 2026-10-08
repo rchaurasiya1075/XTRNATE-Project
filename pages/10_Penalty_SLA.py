@@ -13,7 +13,7 @@ from utils.bootstrap import ensure_ready, apply_isp_filter, get_selected_isps, i
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
-st.set_page_config(page_title="Penalty & SLA | XTRNATE", page_icon="📜", layout="wide")
+st.set_page_config(page_title="Penalty & SLA | Opsora", page_icon="📜", layout="wide")
 ensure_ready()
 
 # Exact CKT Page Custom CSS Theme

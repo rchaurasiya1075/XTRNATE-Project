@@ -14,7 +14,7 @@ from utils.anim_deck import build_animated_pptx
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
-st.set_page_config(page_title="ISP Comparison | XTRNATE", page_icon="⚖️", layout="wide")
+st.set_page_config(page_title="ISP Comparison | Opsora", page_icon="⚖️", layout="wide")
 st.title("⚖️ ISP Report")
 st.caption("Date range • all ISPs under Owner • category from last remark • Repeat 3M/6M • Excel + PPT")
 ensure_ready()

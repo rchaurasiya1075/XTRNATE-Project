@@ -14,7 +14,7 @@ from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 from utils.sheets_config import csv_url
 
-st.set_page_config(page_title="Pending Mail | XTRNATE", page_icon="📧", layout="wide")
+st.set_page_config(page_title="Pending Mail | Opsora", page_icon="📧", layout="wide")
 ensure_ready()
 
 

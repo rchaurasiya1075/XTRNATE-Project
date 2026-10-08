@@ -16,7 +16,7 @@ from utils.powerbi_pack import (
 )
 from utils.sheets_config import xtranet_url
 
-st.set_page_config(page_title="Power BI | Xtranet", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Power BI | Opsora", page_icon="📊", layout="wide")
 init_data_source()
 ensure_ready()
 

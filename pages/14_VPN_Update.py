@@ -12,7 +12,7 @@ from utils.data_processing import classify_isp, isp_options
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
-st.set_page_config(page_title="VPN Update | XTRNATE", page_icon="📡", layout="wide")
+st.set_page_config(page_title="VPN Update | Opsora", page_icon="📡", layout="wide")
 ensure_ready()
 
 

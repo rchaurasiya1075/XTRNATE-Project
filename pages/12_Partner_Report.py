@@ -18,7 +18,7 @@ from utils.ticket_sync import history_gid
 from utils.sheets_config import xtranet_id, xtranet_url
 
 st.set_page_config(
-    page_title="Partner Report | XTRNATE", page_icon="📄", layout="wide"
+    page_title="Partner Report | Opsora", page_icon="📄", layout="wide"
 )
 
 CLASS_ORDER = [

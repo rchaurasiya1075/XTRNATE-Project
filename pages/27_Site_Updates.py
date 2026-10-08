@@ -21,7 +21,7 @@ from utils.site_update import (
     template_excel,
 )
 
-st.set_page_config(page_title="Site Updates | Xtranet", page_icon="🗂️", layout="wide")
+st.set_page_config(page_title="Site Updates | Opsora", page_icon="🗂️", layout="wide")
 ensure_ready()
 
 st.title("🗂️ Site Updates")

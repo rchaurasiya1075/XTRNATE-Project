@@ -7,7 +7,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.escalation import load_escalation_matrix, save_escalation_matrix
 from utils.bootstrap import ensure_ready, get_selected_isps, available_isps
 
-st.set_page_config(page_title="Escalation Matrix | XTRNATE", page_icon="⚙️", layout="wide")
+st.set_page_config(page_title="Escalation Matrix | Opsora", page_icon="⚙️", layout="wide")
 
 st.title("⚙️ Escalation Matrix Configuration")
 st.markdown("Edit **Name, Email, Time Rules, Level** here. Each ISP has its own matrix.")

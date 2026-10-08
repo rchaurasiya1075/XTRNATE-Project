@@ -7,7 +7,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready
 from utils.site_pack import render_multi_site_pack
 
-st.set_page_config(page_title="Multi Site Tracker | XTRNATE", page_icon="📋", layout="wide")
+st.set_page_config(page_title="Multi Site Tracker | Opsora", page_icon="📋", layout="wide")
 ensure_ready()
 
 st.title("📋 Multi Site Tracker")

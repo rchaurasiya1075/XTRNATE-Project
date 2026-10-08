@@ -31,8 +31,8 @@ show_last_update()
 
 st.markdown("""
 <div class="main-header">
-    <h1>📡 Xtranet NOC</h1>
-    <p>Hughes NOC • multi-project reports • Site Search • SLA</p>
+    <h1>📡 Opsora</h1>
+    <p>Any project • your sheet • tickets, SLA and site reports</p>
 </div>
 """, unsafe_allow_html=True)
 

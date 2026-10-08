@@ -33,7 +33,7 @@ MONTH_ALIAS = {
     "dec": "December", "december": "December",
 }
 
-st.set_page_config(page_title="SIM Backup Usage | XTRNATE", page_icon="📶", layout="wide")
+st.set_page_config(page_title="SIM Backup Usage | Opsora", page_icon="📶", layout="wide")
 st.title("📶 SIM Backup Usage vs BB Down")
 st.caption("Backup SIM data • 10 GB plan • Site list: Branch + State + ISP (all Owner names) from the sheet")
 

@@ -9,7 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready, isp_label
 from utils.excel_to_ppt import load_workbook, workbook_to_pptx
 
-st.set_page_config(page_title="Excel to PPT | XTRNATE", page_icon="🎬", layout="wide")
+st.set_page_config(page_title="Excel to PPT | Opsora", page_icon="🎬", layout="wide")
 ensure_ready()
 
 st.title("🎬 Excel → PPT automation")

@@ -11,7 +11,7 @@ from utils.bootstrap import ensure_ready, apply_isp_filter
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
-st.set_page_config(page_title="Repeat Analysis | XTRNATE", page_icon="🔁", layout="wide")
+st.set_page_config(page_title="Repeat Analysis | Opsora", page_icon="🔁", layout="wide")
 
 st.title("🔁 Repeat Site & Area Analysis")
 st.markdown("State → City → Site Code → Full Ticket Details (Incident ID, Submitted, Resolved, Reason)")
