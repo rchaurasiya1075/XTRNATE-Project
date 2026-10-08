@@ -38,6 +38,36 @@ FIELDS = [
     ("down_time_min", "Down time (minutes)", False),
 ]
 
+ALIASES = {
+    "site_code": ["request title", "site code", "sitecode", "site id", "unique id", "hughes sitecode", "hughessitecode"],
+    "ticket_id": ["incident id", "ticket id", "tt number", "tt no", "incident no", "incident"],
+    "submitted_time": ["submitted time", "open date", "created time", "log time", "open time"],
+    "status": ["currentstatus", "current status", "status"],
+    "owner": ["owner", "isp", "partner", "isp name"],
+    "reason": ["last enclosure comment(active)", "last enclosure comment", "remarks", "remark", "rfo"],
+    "resolved_time": ["resolved time-active", "resolved time", "close time(active)", "close time"],
+    "state": ["state"],
+    "city": ["city", "location"],
+    "down_time_min": ["down time", "downtime", "down time (minutes)", "outage minutes"],
+}
+
+
+def guess_columns(headers) -> dict:
+    """Match this file's headers to the fields reports already understand."""
+    lower = {}
+    for h in headers or []:
+        key = str(h or "").strip().lower()
+        if key and key not in lower:
+            lower[key] = str(h).strip()
+    out = {}
+    for field, names in ALIASES.items():
+        for name in names:
+            if name in lower:
+                out[field] = lower[name]
+                break
+    return out
+
+
 BUILTIN = {"xtranet", "shell", "backhaul", "link", "dgll"}
 
 

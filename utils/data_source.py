@@ -319,22 +319,37 @@ def _render_custom_project(project: str):
         if str(lab).strip() and str(coln).strip() and str(coln).strip() != "—":
             extra_rows.append({"label": str(lab).strip(), "column": str(coln).strip()})
     if st.button("Save link + columns and load", type="primary", key=f"custom_save_{project}"):
-        missing = [label for key, label, req in FIELDS if req and not str(picked.get(key) or "").strip()]
-        if missing:
-            st.error("Fill required columns: " + ", ".join(missing))
-        elif not extract_sheet_id(url):
+        if not extract_sheet_id(url):
             st.error("Paste a Google Sheet link first.")
         else:
-            save_project(project, url, picked, gid=parse_gid(url), extra=extra_rows)
-            from utils.auto_load import auto_load_tickets
-            st.cache_data.clear()
-            st.session_state.data_source = "google"
-            ok, msg = auto_load_tickets(force=True)
-            if ok:
-                st.success(msg)
+            if not headers:
+                try:
+                    raw = load_sheet_as_csv(extract_sheet_id(url), gid=parse_gid(url))
+                    headers = [str(c).strip() for c in list(raw.columns)]
+                    st.session_state[f"custom_headers_{project}"] = headers
+                except Exception as e:
+                    st.error(str(e)[:240])
+                    headers = []
+            from utils.custom_projects import guess_columns
+            guessed = guess_columns(headers)
+            for key, _label, _req in FIELDS:
+                if not str(picked.get(key) or "").strip() and guessed.get(key):
+                    picked[key] = guessed[key]
+            missing = [label for key, label, req in FIELDS if req and not str(picked.get(key) or "").strip()]
+            if missing:
+                st.error("Could not find these columns in the sheet: " + ", ".join(missing) + ". Select them above, then save again.")
             else:
-                st.error(msg)
-            st.rerun()
+                save_project(project, url, picked, gid=parse_gid(url), extra=extra_rows)
+                from utils.auto_load import auto_load_tickets
+                st.cache_data.clear()
+                st.session_state.data_source = "google"
+                st.session_state._view_project = None
+                ok, msg = auto_load_tickets(force=True)
+                if ok:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+                st.rerun()
 
 
 def _render_admin_delete():

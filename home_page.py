@@ -172,13 +172,40 @@ PAGE_CATS = [
     ]),
 ]
 
-r1 = PAGE_CATS[:3]
-r2 = PAGE_CATS[3:]
+from utils.access_gate import is_admin
+_HIDDEN = set()
+if not is_admin():
+    _HIDDEN = {
+        "pages/23_Multi_Site_Tracker.py",
+        "pages/19_SIM_Inventory.py",
+        "pages/18_SIM_Backup_Usage.py",
+        "pages/13_Circuit_ID.py",
+        "pages/21_LC_Master.py",
+        "pages/22_Last_Mile_Update.py",
+        "pages/27_Site_Updates.py",
+        "pages/25_Power_BI.py",
+        "pages/26_Sheet_Links.py",
+        "pages/5_Escalation_Matrix.py",
+    }
+shown = []
+for cat, items in PAGE_CATS:
+    keep = [it for it in items if it[0] not in _HIDDEN]
+    if keep:
+        shown.append((cat, keep))
+if not shown:
+    shown = PAGE_CATS
+r1 = shown[:3]
+r2 = shown[3:]
 for row in (r1, r2):
+    if not row:
+        continue
     cols = st.columns(len(row), gap="small")
     for col, (cat, items) in zip(cols, row):
         with col:
             with st.container(border=True):
                 st.markdown(f"**{cat}**")
                 for path, label, icon in items:
-                    st.page_link(path, label=label, icon=icon)
+                    try:
+                        st.page_link(path, label=label, icon=icon)
+                    except Exception:
+                        st.caption(f"{icon} {label}")
