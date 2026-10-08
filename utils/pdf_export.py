@@ -17,6 +17,25 @@ MUTED = (107, 114, 128)
 WHITE = (255, 255, 255)
 SUB = (216, 237, 228)
 
+PDF_THEMES = {
+    "Navy": {"navy": (15, 44, 91), "gold": (22, 58, 114), "alt": (244, 247, 251), "sub": (214, 226, 242)},
+    "Slate": {"navy": (51, 65, 85), "gold": (30, 41, 59), "alt": (248, 250, 252), "sub": (226, 232, 240)},
+    "Print": {"navy": (17, 17, 17), "gold": (51, 51, 51), "alt": (245, 245, 245), "sub": (220, 220, 220)},
+    "Sand": {"navy": (124, 74, 30), "gold": (92, 56, 22), "alt": (251, 246, 239), "sub": (236, 214, 190)},
+}
+
+
+def _pdf_colors(theme, pdf=None):
+    pal = PDF_THEMES.get(str(theme or "Forest")) or {}
+    if pdf is not None and getattr(pdf, "theme_name", "Forest") != "Forest":
+        pal = PDF_THEMES.get(pdf.theme_name) or pal
+    return {
+        "navy": pal.get("navy", NAVY),
+        "gold": pal.get("gold", GOLD),
+        "alt": pal.get("alt", ALT),
+        "sub": pal.get("sub", SUB),
+    }
+
 
 def _cell(val) -> str:
     if val is None:
@@ -111,10 +130,11 @@ def _table(df):
 
 
 class ReportPDF(FPDF):
-    def __init__(self, title: str, subtitle: str):
+    def __init__(self, title: str, subtitle: str, theme: str = "Forest"):
         super().__init__(orientation="L", unit="mm", format="A4")
         self.report_title = _cell(title)[:90]
         self.report_sub = _cell(subtitle)[:110]
+        self.theme_name = theme or "Forest"
         self.set_auto_page_break(auto=True, margin=16)
         self.set_margins(10, 20, 10)
         try:
@@ -123,34 +143,38 @@ class ReportPDF(FPDF):
             pass
 
     def header(self):
-        self.set_fill_color(*NAVY)
+        c = _pdf_colors(self.theme_name)
+        self.set_fill_color(*c["navy"])
         self.rect(0, 0, self.w, 16, "F")
-        self.set_fill_color(*GOLD)
+        self.set_fill_color(*c["gold"])
         self.rect(0, 16, self.w, 1.4, "F")
         self.set_text_color(*WHITE)
         self.set_font("Helvetica", "B", 13)
         self.set_xy(10, 3.2)
         self.cell(self.w - 20, 6, self.report_title, align="L")
         self.set_font("Helvetica", "", 8)
-        self.set_text_color(*SUB)
+        self.set_text_color(*c["sub"])
         self.set_xy(10, 9.5)
         self.cell(self.w - 20, 5, self.report_sub, align="L")
         self.set_y(22)
 
     def footer(self):
+        c = _pdf_colors(self.theme_name)
         self.set_y(-12)
-        self.set_draw_color(*GOLD)
+        self.set_draw_color(*c["gold"])
         self.set_line_width(0.35)
         self.line(10, self.get_y(), self.w - 10, self.get_y())
         self.set_font("Helvetica", "", 8)
         self.set_text_color(*MUTED)
-        self.cell(0, 8, f"XTRNATE NOC  |  Confidential  |  Page {self.page_no()}/{{nb}}", align="C")
+        brand = "XTRNATE NOC" if self.theme_name == "Forest" else "Opsora"
+        self.cell(0, 8, f"{brand}  |  Confidential  |  Page {self.page_no()}/{{nb}}", align="C")
 
 
 def _draw_table(pdf: FPDF, df, section: str):
+    c = _pdf_colors(getattr(pdf, "theme_name", "Forest"))
     cols, rows = _table(df)
     pdf.set_font("Helvetica", "B", 11)
-    pdf.set_text_color(*NAVY)
+    pdf.set_text_color(*c["navy"])
     pdf.cell(0, 7, _cell(section))
     pdf.ln(8)
 
@@ -171,7 +195,7 @@ def _draw_table(pdf: FPDF, df, section: str):
     row_h, header_h = 6.2, 7.2
 
     def header_row():
-        pdf.set_fill_color(*NAVY)
+        pdf.set_fill_color(*c["navy"])
         pdf.set_text_color(*WHITE)
         pdf.set_font("Helvetica", "B", 7.5)
         x, y = pdf.l_margin, pdf.get_y()
@@ -192,18 +216,18 @@ def _draw_table(pdf: FPDF, df, section: str):
         if pdf.get_y() > pdf.h - 20:
             pdf.add_page()
             pdf.set_font("Helvetica", "B", 11)
-            pdf.set_text_color(*NAVY)
+            pdf.set_text_color(*c["navy"])
             pdf.cell(0, 7, _cell(section) + "  (contd.)")
             pdf.ln(8)
             header_row()
         first = (rec[0] if rec else "").strip().lower()
         is_tot = first in ("grand total", "total", "total / average")
         if is_tot:
-            pdf.set_fill_color(*NAVY)
+            pdf.set_fill_color(*c["navy"])
             pdf.set_text_color(*WHITE)
             pdf.set_font("Helvetica", "B", 7)
         else:
-            pdf.set_fill_color(*(ALT if i % 2 else WHITE))
+            pdf.set_fill_color(*(c["alt"] if i % 2 else WHITE))
             pdf.set_text_color(*INK)
             pdf.set_font("Helvetica", "", 7)
         x, y = pdf.l_margin, pdf.get_y()
@@ -217,7 +241,7 @@ def _draw_table(pdf: FPDF, df, section: str):
         pdf.set_y(y + row_h)
 
 
-def pdf_bytes(sheets, *, title="XTRNATE Report", subtitle="", sheet_name="Report"):
+def pdf_bytes(sheets, *, title="XTRNATE Report", subtitle="", sheet_name="Report", theme="Forest"):
     try:
         if isinstance(sheets, (pd.DataFrame, pd.Series)):
             items = [(sheet_name, sheets)]
@@ -235,7 +259,7 @@ def pdf_bytes(sheets, *, title="XTRNATE Report", subtitle="", sheet_name="Report
 
         stamp = datetime.now(IST).strftime("%d-%b-%Y %I:%M %p IST")
         sub = f"{subtitle}  •  {stamp}" if subtitle else f"XTRNATE NOC  •  {stamp}"
-        pdf = ReportPDF(title, sub)
+        pdf = ReportPDF(title, sub, theme=theme)
         for name, df in clean:
             pdf.add_page()
             try:

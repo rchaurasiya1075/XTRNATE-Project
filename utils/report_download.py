@@ -8,6 +8,23 @@ from utils.pdf_export import pdf_bytes
 
 XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 PDF = "application/pdf"
+FORMATS = ["Forest", "Navy", "Slate", "Print", "Sand"]
+
+
+def report_format(key: str) -> str:
+    """One format picker per download. Choice is remembered for the next page."""
+    current = st.session_state.get("report_template") or "Forest"
+    if current not in FORMATS:
+        current = "Forest"
+    pick = st.selectbox(
+        "Report format",
+        FORMATS,
+        index=FORMATS.index(current),
+        key=f"{key}_fmt",
+        help="Forest is the current green report. Navy, Slate, Print and Sand are the same data in another colour.",
+    )
+    st.session_state.report_template = pick
+    return pick
 
 
 def _stem(name: str) -> str:
@@ -26,14 +43,15 @@ def download_pack(
     key="dl",
 ):
     stem = _stem(file_stem)
+    theme = report_format(key)
     xls = b""
     pdf = b""
     try:
-        xls = excel_bytes(data, title=title, subtitle=subtitle, sheet_name=sheet_name) or b""
+        xls = excel_bytes(data, title=title, subtitle=subtitle, sheet_name=sheet_name, theme=theme) or b""
     except Exception:
         xls = b""
     try:
-        pdf = pdf_bytes(data, title=title, subtitle=subtitle, sheet_name=sheet_name) or b""
+        pdf = pdf_bytes(data, title=title, subtitle=subtitle, sheet_name=sheet_name, theme=theme) or b""
         if pdf and not pdf.startswith(b"%PDF"):
             pdf = b""
     except Exception:

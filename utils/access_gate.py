@@ -13,7 +13,9 @@ PRODUCT = "Opsora"
 TAGLINE = "Reports for any project — paste your sheet, keep your data private."
 
 _PATH = Path(__file__).with_name("access_codes.json")
-_SESSION_DAYS = 30
+_SESSION_DAYS = 14
+_IDLE_SEC = 3 * 3600
+_COOKIE = "opsora_sid"
 
 
 def _hash(pin: str) -> str:
@@ -179,6 +181,7 @@ def start_session(hit: dict) -> str:
         "admin": bool(hit.get("admin")),
         "projects": list(hit.get("projects") or []),
         "exp": time.time() + _SESSION_DAYS * 86400,
+        "last_seen": time.time(),
         "guide_seen": bool(hit.get("guide_seen")),
     }
     _save(data)
@@ -197,7 +200,24 @@ def read_session(token: str) -> dict | None:
         data["sessions"].pop(token, None)
         _save(data)
         return None
+    seen = float(row.get("last_seen") or 0)
+    if seen and time.time() - seen > _IDLE_SEC:
+        data["sessions"].pop(token, None)
+        _save(data)
+        return None
     return row
+
+
+def touch_session(token: str) -> None:
+    token = str(token or "").strip()
+    if not token:
+        return
+    data = _load()
+    row = (data.get("sessions") or {}).get(token)
+    if not isinstance(row, dict):
+        return
+    row["last_seen"] = time.time()
+    _save(data)
 
 
 def end_session(token: str) -> None:
@@ -250,7 +270,69 @@ def mark_guide_seen() -> None:
     _save(data)
 
 
-def _apply_login(hit: dict, token: str) -> None:
+def _cookie_manager():
+    try:
+        import extra_streamlit_components as stx
+    except Exception:
+        return None
+    cm = st.session_state.get("_opsora_cm")
+    if cm is None:
+        cm = stx.CookieManager(key="opsora_cookie_mgr")
+        st.session_state._opsora_cm = cm
+    return cm
+
+
+def _read_browser_token():
+    """(token, ready). ready is False only while the browser cookie has not come back yet."""
+    cm = _cookie_manager()
+    if cm is None:
+        try:
+            return str(st.query_params.get("sid") or ""), True
+        except Exception:
+            return "", True
+    try:
+        bag = cm.get_all()
+    except Exception:
+        bag = None
+    if bag is None:
+        try:
+            q = str(st.query_params.get("sid") or "")
+        except Exception:
+            q = ""
+        return (q, True) if q else ("", False)
+    token = str((bag or {}).get(_COOKIE) or "")
+    if not token:
+        try:
+            token = str(st.query_params.get("sid") or "")
+        except Exception:
+            pass
+    return token, True
+
+
+def _save_browser_token(token: str) -> None:
+    if not token:
+        return
+    cm = _cookie_manager()
+    if cm is None:
+        return
+    try:
+        from datetime import datetime, timedelta
+        cm.set(_COOKIE, token, expires_at=datetime.now() + timedelta(hours=12), key="opsora_set_sid")
+    except Exception:
+        pass
+
+
+def _clear_browser_token() -> None:
+    cm = _cookie_manager()
+    if cm is None:
+        return
+    try:
+        cm.delete(_COOKIE, key="opsora_del_sid")
+    except Exception:
+        pass
+
+
+def _apply_login(hit: dict, token: str, remember: bool = True) -> None:
     st.session_state.access_ok = True
     st.session_state.access_admin = bool(hit.get("admin"))
     st.session_state.access_name = hit.get("name")
@@ -261,19 +343,24 @@ def _apply_login(hit: dict, token: str) -> None:
         st.query_params["sid"] = token
     except Exception:
         pass
+    _save_browser_token(token) if remember else None
 
 
-def _restore_session() -> bool:
+def _restore_session(token: str | None = None):
     if st.session_state.get("access_ok"):
         return True
-    try:
-        token = str(st.query_params.get("sid") or "")
-    except Exception:
-        token = ""
+    if not token:
+        token, ready = _read_browser_token()
+        if not ready:
+            return None
     row = read_session(token)
     if not row:
+        if token:
+            _clear_browser_token()
         return False
-    _apply_login(row, token)
+    touch_session(token)
+    row["guide_seen"] = bool(row.get("guide_seen"))
+    _apply_login(row, token, remember=False)
     return True
 
 
@@ -306,6 +393,7 @@ def apply_access_scope() -> None:
 
 def logout() -> None:
     end_session(str(st.session_state.get("access_token") or ""))
+    _clear_browser_token()
     for key in (
         "access_ok", "access_admin", "access_name", "access_projects", "access_token",
         "closed_df", "open_df", "raw_tickets_df", "_view_project", "project_store",
@@ -321,7 +409,18 @@ def logout() -> None:
 
 def ensure_logged_in() -> bool:
     if not st.session_state.get("access_ok"):
-        _restore_session()
+        token, ready = _read_browser_token()
+        if not ready:
+            waits = int(st.session_state.get("_ck_wait") or 0) + 1
+            st.session_state._ck_wait = waits
+            if waits <= 2:
+                st.stop()
+        else:
+            st.session_state._ck_wait = 0
+        if token:
+            _restore_session(token)
+    else:
+        touch_session(str(st.session_state.get("access_token") or ""))
     if st.session_state.get("access_ok"):
         apply_access_scope()
         with st.sidebar:

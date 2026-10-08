@@ -13,3 +13,4 @@ pillow>=10.0.0
 firebase-admin>=6.5.0
 fpdf2>=2.7.0
 matplotlib>=3.8.0
+extra-streamlit-components>=0.1.71

@@ -29,6 +29,14 @@ TITLE_SUB_BG = "#153D31"
 
 TAB_COLORS = ["1B4D3E", "2D6A4F", "14532D", "3F5E56", "0F766E", "365314"]
 
+# Forest is the current report. Other names only change colours.
+THEMES = {
+    "Navy": {"navy": "#0F2C5B", "sub": "#163A72", "alt": "#F4F7FB", "border": "#D5DDE8", "green_bg": "#E7F0FA", "green_fg": "#0F2C5B", "tabs": ["0F2C5B", "163A72", "1E4B8A", "2456A0"]},
+    "Slate": {"navy": "#334155", "sub": "#1E293B", "alt": "#F8FAFC", "border": "#E2E8F0", "green_bg": "#F1F5F9", "green_fg": "#334155", "tabs": ["334155", "475569", "1E293B", "64748B"]},
+    "Print": {"navy": "#111111", "sub": "#333333", "alt": "#F5F5F5", "border": "#CCCCCC", "green_bg": "#EEEEEE", "green_fg": "#111111", "tabs": ["111111", "444444", "666666", "222222"]},
+    "Sand": {"navy": "#7C4A1E", "sub": "#5C3816", "alt": "#FBF6EF", "border": "#E6D3C2", "green_bg": "#F3E6D6", "green_fg": "#7C4A1E", "tabs": ["7C4A1E", "A1622F", "5C3816", "C4844A"]},
+}
+
 WRAP_HINTS = (
     "reason", "root_cause", "problem_reported", "final_action", "explanation",
     "remark", "address", "note", "comment", "enclosure", "last_enclosure",
@@ -158,12 +166,19 @@ def _cell_python(val):
     return val
 
 
-def _formats(wb):
+def _formats(wb, theme="Forest"):
+    pal = THEMES.get(str(theme or "Forest")) or {}
+    navy = pal.get("navy", NAVY)
+    sub_bg = pal.get("sub", TITLE_SUB_BG)
+    alt = pal.get("alt", ALT)
+    border = pal.get("border", BORDER)
+    green_bg = pal.get("green_bg", GREEN_BG)
+    green_fg = pal.get("green_fg", GREEN_FG)
     base = {
         "font_name": "Calibri",
         "font_size": 11,
         "border": 1,
-        "border_color": BORDER,
+        "border_color": border,
         "valign": "vcenter",
         "text_wrap": True,
     }
@@ -176,36 +191,36 @@ def _formats(wb):
     return {
         "title": wb.add_format({
             "font_name": "Calibri", "font_size": 16, "bold": True,
-            "font_color": WHITE, "bg_color": NAVY, "align": "left", "valign": "vcenter",
+            "font_color": WHITE, "bg_color": navy, "align": "left", "valign": "vcenter",
         }),
         "sub": wb.add_format({
             "font_name": "Calibri", "font_size": 9,
-            "font_color": WHITE, "bg_color": TITLE_SUB_BG, "align": "left", "valign": "vcenter",
+            "font_color": WHITE, "bg_color": sub_bg, "align": "left", "valign": "vcenter",
         }),
-        "header": f(bold=True, font_color=WHITE, bg_color=NAVY, align="center", font_size=10, text_wrap=True),
+        "header": f(bold=True, font_color=WHITE, bg_color=navy, align="center", font_size=10, text_wrap=True),
         "cell": f(font_color=INK, bg_color=ROW, align="left"),
-        "cell_alt": f(font_color=INK, bg_color=ALT, align="left"),
+        "cell_alt": f(font_color=INK, bg_color=alt, align="left"),
         "cell_c": f(font_color=INK, bg_color=ROW, align="center"),
-        "cell_alt_c": f(font_color=INK, bg_color=ALT, align="center"),
+        "cell_alt_c": f(font_color=INK, bg_color=alt, align="center"),
         "num": f(font_color=INK, bg_color=ROW, align="center", num_format="#,##0"),
-        "num_alt": f(font_color=INK, bg_color=ALT, align="center", num_format="#,##0"),
+        "num_alt": f(font_color=INK, bg_color=alt, align="center", num_format="#,##0"),
         "num2": f(font_color=INK, bg_color=ROW, align="center", num_format="#,##0.00"),
-        "num2_alt": f(font_color=INK, bg_color=ALT, align="center", num_format="#,##0.00"),
+        "num2_alt": f(font_color=INK, bg_color=alt, align="center", num_format="#,##0.00"),
         "date": f(font_color=INK, bg_color=ROW, align="center", num_format="dd-mmm-yyyy hh:mm"),
-        "date_alt": f(font_color=INK, bg_color=ALT, align="center", num_format="dd-mmm-yyyy hh:mm"),
+        "date_alt": f(font_color=INK, bg_color=alt, align="center", num_format="dd-mmm-yyyy hh:mm"),
         "day": f(font_color=INK, bg_color=ROW, align="center", num_format="dd-mmm-yyyy"),
-        "day_alt": f(font_color=INK, bg_color=ALT, align="center", num_format="dd-mmm-yyyy"),
+        "day_alt": f(font_color=INK, bg_color=alt, align="center", num_format="dd-mmm-yyyy"),
         "zero": f(font_color=MUTED, bg_color=ROW, align="center"),
-        "zero_alt": f(font_color=MUTED, bg_color=ALT, align="center"),
+        "zero_alt": f(font_color=MUTED, bg_color=alt, align="center"),
         "label": f(font_color=INK, bg_color=ROW, align="left", bold=True),
-        "label_alt": f(font_color=INK, bg_color=ALT, align="left", bold=True),
-        "total": f(bold=True, font_color=TOTAL_FG, bg_color=TOTAL_BG, align="center"),
-        "total_l": f(bold=True, font_color=TOTAL_FG, bg_color=TOTAL_BG, align="left"),
-        "green": f(bold=True, font_color=GREEN_FG, bg_color=GREEN_BG, align="center"),
+        "label_alt": f(font_color=INK, bg_color=alt, align="left", bold=True),
+        "total": f(bold=True, font_color=TOTAL_FG, bg_color=navy, align="center"),
+        "total_l": f(bold=True, font_color=TOTAL_FG, bg_color=navy, align="left"),
+        "green": f(bold=True, font_color=green_fg, bg_color=green_bg, align="center"),
         "yellow": f(bold=True, font_color=YELLOW_FG, bg_color=YELLOW_BG, align="center"),
         "red": f(bold=True, font_color=RED_FG, bg_color=RED_BG, align="center"),
-        "kpi_l": f(bold=True, font_color=INK, bg_color=ALT, align="left"),
-        "kpi_v": f(bold=True, font_color=NAVY, bg_color=GREEN_BG, align="center", font_size=12),
+        "kpi_l": f(bold=True, font_color=INK, bg_color=alt, align="left"),
+        "kpi_v": f(bold=True, font_color=navy, bg_color=green_bg, align="center", font_size=12),
     }
 
 
@@ -338,6 +353,7 @@ def excel_bytes(
     title="XTRNATE Report",
     subtitle="",
     sheet_name="Report",
+    theme="Forest",
 ):
     """Build a branded .xlsx.
 
@@ -362,7 +378,9 @@ def excel_bytes(
 
     out = BytesIO()
     used = set()
+    tabs = (THEMES.get(str(theme or "Forest")) or {}).get("tabs") or TAB_COLORS
     with pd.ExcelWriter(out, engine="xlsxwriter") as writer:
+        writer.book._xtrnate_fmt = _formats(writer.book, theme)
         try:
             writer.book.set_properties({
                 "title": title,
@@ -383,7 +401,7 @@ def excel_bytes(
                 sn,
                 title=title if i == 0 else f"{title}  ·  {name}",
                 subtitle=subtitle,
-                tab_color=TAB_COLORS[i % len(TAB_COLORS)],
+                tab_color=tabs[i % len(tabs)],
                 kpi=kpi,
             )
     return out.getvalue()
