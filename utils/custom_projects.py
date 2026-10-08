@@ -97,7 +97,17 @@ def all_projects() -> dict:
 def get_project(name: str) -> dict | None:
     if is_builtin(name):
         return None
-    item = _load().get(str(name or "").strip())
+    key = str(name or "").strip()
+    item = _load().get(key)
+    if isinstance(item, dict) and item.get("sheet_url"):
+        return item
+    try:
+        import streamlit as st
+        cached = (st.session_state.get("_custom_cfg") or {}).get(key)
+        if isinstance(cached, dict) and cached.get("sheet_url"):
+            return cached
+    except Exception:
+        pass
     return item if isinstance(item, dict) else None
 
 
@@ -130,6 +140,13 @@ def save_project(name: str, sheet_url: str, columns: dict, gid: int | None = Non
         "extra": extras if extra is not None else list(prev.get("extra") or []),
     }
     _save(data)
+    try:
+        import streamlit as st
+        bag = dict(st.session_state.get("_custom_cfg") or {})
+        bag[name] = data[name]
+        st.session_state._custom_cfg = bag
+    except Exception:
+        pass
 
 
 def delete_project(name: str) -> bool:

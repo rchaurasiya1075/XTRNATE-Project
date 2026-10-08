@@ -21,12 +21,21 @@ def parse_datetime(series):
     try:
         if not isinstance(series, (pd.Series, list, tuple, np.ndarray)):
             return pd.Series([pd.NaT] * (len(series) if hasattr(series, '__len__') else 1))
-        return pd.to_datetime(series, errors='coerce', dayfirst=False)
+        s = pd.Series(series).astype(str).str.strip()
+        s = s.str.replace(",", " ", regex=False)
+        s = s.str.replace(r"\s+at\s+", " ", regex=True, case=False)
+        s = s.str.replace(r"\s+", " ", regex=True)
+        parsed = pd.to_datetime(s, errors="coerce", dayfirst=False)
+        if int(parsed.notna().sum()) < max(1, int(0.5 * max(len(s), 1))):
+            alt = pd.to_datetime(s, errors="coerce", dayfirst=True)
+            if int(alt.notna().sum()) > int(parsed.notna().sum()):
+                parsed = alt
+        return parsed
     except Exception:
         try:
+            return pd.to_datetime(series, errors="coerce")
+        except Exception:
             return pd.Series([pd.NaT] * len(series))
-        except:
-            return pd.Series(dtype='datetime64[ns]')
 
 def _norm_remark(reason_text):
     t = str(reason_text or '').lower()

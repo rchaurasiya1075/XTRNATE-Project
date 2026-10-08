@@ -69,6 +69,9 @@ period_map = {"Last 1 Month": "1M", "Last 3 Months": "3M", "Last 6 Months": "6M"
 
 if closed_df is not None and not closed_df.empty:
     closed_filtered = filter_by_period(closed_df, period_map[period]) if period_map[period] != "ALL" else closed_df
+    if closed_filtered is None or closed_filtered.empty:
+        closed_filtered = closed_df
+        st.caption("No rows in that period — showing the full sheet.")
 else:
     closed_filtered = pd.DataFrame()
 

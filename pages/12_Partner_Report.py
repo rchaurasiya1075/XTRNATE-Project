@@ -293,15 +293,15 @@ with st.expander("🔄 Reload Data from Google Sheet"):
     st.caption("This updates the Google Sheet slot only. If reports are on Manual Excel, they stay on the upload.")
     if st.button("Reload DATA tab", type="primary"):
         try:
-            sid = extract_sheet_id(xtranet_url()) or xtranet_id()
-            gid = history_gid(st.session_state.get("active_project") or "Xtranet")
-            raw = load_sheet_as_csv(sid, gid=gid)
-            processed = process_closed_tickets(raw)
-            if "ticket_id" in processed.columns:
-                processed = processed.drop_duplicates(subset=["ticket_id"], keep="first")
-            save_google(processed, st.session_state.get("open_df"), processed, note=f"Partner DATA tab ({st.session_state.get('active_project')} gid {gid})")
-            st.success(f"Google slot loaded {len(processed)} unique incidents. {source_status()}")
-            st.rerun()
+            from utils.auto_load import auto_load_tickets
+            st.cache_data.clear()
+            st.session_state._view_project = None
+            ok, msg = auto_load_tickets(force=True)
+            if not ok:
+                st.error(msg)
+            else:
+                st.success(f"{msg}  •  {source_status()}")
+                st.rerun()
         except Exception as e:
             st.error(str(e))
 

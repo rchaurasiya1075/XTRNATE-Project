@@ -11,13 +11,8 @@ DEFAULT_SHEET_URL = xtranet_url()
 DEFAULT_GID = None
 IST = ZoneInfo("Asia/Kolkata")
 
-@st.cache_data(ttl=300, show_spinner=False)
 def _fetch_raw_sheet(sheet_id: str, gid: int):
-    try:
-        return load_sheet_as_csv(sheet_id, gid=gid)
-    except Exception:
-        import pandas as pd
-        return pd.DataFrame()
+    return load_sheet_as_csv(sheet_id, gid=gid)
 
 def _mark_updated():
     st.session_state.data_last_updated = datetime.now(IST)
@@ -89,6 +84,12 @@ def auto_load_tickets(force: bool = False):
         if gid is None:
             gid = history_gid(project)
         df = _fetch_raw_sheet(sheet_id, gid)
+        if df is not None and not df.empty:
+            from utils.custom_projects import guess_columns
+            guessed = guess_columns([str(c) for c in df.columns])
+            merged = dict(guessed)
+            merged.update({k: v for k, v in (user_cols or {}).items() if str(v or "").strip()})
+            user_cols = merged
         if user_cols and apply_user_columns is not None:
             df = apply_user_columns(df, user_cols, (custom or {}).get("extra"))
         if note_extra:
@@ -98,9 +99,11 @@ def auto_load_tickets(force: bool = False):
         processed = process_closed_tickets(df)
 
         if processed is None or processed.empty:
-            save_google(None, None, df if df is not None else None, note=note)
-            _mark_updated()
-            return True, f"No tickets on this project tab ({st.session_state.get('active_project')})"
+            if df is not None and not getattr(df, "empty", True):
+                save_google(df, None, df, note=note)
+                _mark_updated()
+                return True, f"Loaded {len(df)} rows from this sheet"
+            return False, f"No tickets on this project tab ({st.session_state.get('active_project')})"
 
         if 'ticket_id' in processed.columns:
             processed = processed.drop_duplicates(subset=['ticket_id'], keep='first')

@@ -209,6 +209,9 @@ def apply_isp_filter(df):
     out = df
     if not (st.session_state.get("_isp_all_mode") or (picked and set(picked) >= set(opts))):
         out = filter_by_isps(df, picked)
+        if out is not None and getattr(df, "empty", True) is False and getattr(out, "empty", True):
+            # Selected names are not in this file (for example HCIN on a new sheet). Show the sheet.
+            out = df
     return apply_period_filter(out)
 
 

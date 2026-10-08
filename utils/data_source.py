@@ -91,9 +91,16 @@ def apply_active():
         st.session_state.data_source = source
     slot = _bucket(project).get(source) or _empty_slot()
     # Never silently swap Upload → Google. Empty upload stays empty.
-    st.session_state.closed_df = slot.get("closed")
-    st.session_state.open_df = slot.get("open")
-    st.session_state.raw_tickets_df = slot.get("raw") if slot.get("raw") is not None else slot.get("closed")
+    closed = slot.get("closed")
+    opened = slot.get("open")
+    raw = slot.get("raw") if slot.get("raw") is not None else closed
+    # One sheet often has only open rows, or only closed. Every report page reads closed_df,
+    # so if that half is empty, show the full sheet there too.
+    if (closed is None or getattr(closed, "empty", True)) and raw is not None and not getattr(raw, "empty", True):
+        closed = raw
+    st.session_state.closed_df = closed
+    st.session_state.open_df = opened
+    st.session_state.raw_tickets_df = raw
     st.session_state.data_source_note = slot.get("note") or ""
     st.session_state.data_auto_loaded = True
 
@@ -208,12 +215,20 @@ def ensure_project_loaded():
         st.session_state._view_project = proj
         return
     already = st.session_state.get("_view_project")
-    has = st.session_state.get("closed_df") is not None or st.session_state.get("open_df") is not None
+    has = (
+        st.session_state.get("closed_df") is not None
+        or st.session_state.get("open_df") is not None
+        or st.session_state.get("raw_tickets_df") is not None
+    )
     if already == proj and has:
         return
+    if already != proj:
+        st.session_state.selected_isps = None
+        st.session_state["_isp_all_mode"] = True
     from utils.auto_load import auto_load_tickets
     auto_load_tickets(force=True)
     st.session_state._view_project = proj
+    apply_active()
 
 
 def source_status() -> str:

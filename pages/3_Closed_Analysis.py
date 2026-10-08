@@ -32,6 +32,9 @@ period = st.radio("Select Period", ["Last 1 Month", "Last 3 Months", "Last 6 Mon
 period_map = {"Last 1 Month": "1M", "Last 3 Months": "3M", "Last 6 Months": "6M", "All Time": "ALL"}
 
 df = filter_by_period(closed_df, period_map[period]) if period_map[period] != "ALL" else closed_df.copy()
+if df is None or df.empty:
+    df = closed_df.copy()
+    st.caption("No rows in that period — showing the full sheet.")
 
 st.success(f"Showing **{len(df)}** tickets for selected period")
 
