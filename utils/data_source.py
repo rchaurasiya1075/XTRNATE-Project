@@ -377,6 +377,33 @@ def _render_admin_delete():
             st.rerun()
 
 
+def _render_own_project():
+    """New account: no built-in Excel until they name a project and paste their link."""
+    from utils.access_gate import add_user_project
+
+    owner = str(st.session_state.get("access_name") or "").strip()
+    projects = [p for p in (st.session_state.get("access_projects") or []) if p]
+    if not projects:
+        st.info("This account is empty. The existing Excel is not shown. Add your project name, then your sheet link.")
+        pname = st.text_input("Your project name", key="own_proj_name", placeholder="e.g. My NOC")
+        if st.button("Create my project", type="primary", key="own_proj_btn") and pname.strip():
+            try:
+                key = add_user_project(owner, pname.strip())
+                st.session_state.access_projects = [key]
+                st.session_state.projects = [key]
+                set_project(key)
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+        return
+    project = st.session_state.get("active_project") or projects[0]
+    if project not in projects:
+        project = projects[0]
+        st.session_state.active_project = project
+    st.caption("Paste your Google Sheet link and map the columns. Only this file is read.")
+    _render_custom_project(project)
+
+
 def render_source_bar():
     """Project + Google vs Manual Excel. Safe to call on Home / Upload."""
     init_data_source()
@@ -410,8 +437,8 @@ def render_source_bar():
             _render_custom_project(project)
             _render_admin_delete()
             render_passcode_admin()
-        elif not st.session_state.get("access_admin"):
-            st.caption("This passcode opens only this project.")
+        else:
+            _render_own_project()
     with r2:
         g_lab = f"Google Sheet ({g.get('n_closed') or 0} tickets)"
         u_lab = f"Manual Excel ({u.get('n_closed') or 0} tickets)"

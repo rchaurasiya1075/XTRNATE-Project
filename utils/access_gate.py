@@ -95,19 +95,62 @@ def admin_configured() -> bool:
     return False
 
 
-def match_passcode(pin: str) -> dict | None:
-    pin = str(pin or "").strip()
-    if not pin:
+def register_user(user_id: str, password: str) -> None:
+    user_id = str(user_id or "").strip()
+    password = str(password or "").strip()
+    if len(user_id) < 3 or len(password) < 4:
+        raise ValueError("User ID at least 3 characters and password at least 4.")
+    if user_id.lower() in ("admin", "xtranet", "shell", "backhaul", "link", "dgll"):
+        raise ValueError("This user ID is reserved.")
+    data = _load()
+    for row in data.get("users") or []:
+        if str(row.get("name") or "").strip().lower() == user_id.lower():
+            raise ValueError("This user ID already exists. Sign in instead.")
+    data.setdefault("users", []).append({"name": user_id, "hash": _hash(password), "projects": []})
+    _save(data)
+
+
+def add_user_project(user_id: str, project_name: str) -> str:
+    """Empty project for this user only. Does not touch Xtranet / Shell data."""
+    from utils.custom_projects import is_builtin
+    user_id = str(user_id or "").strip()
+    project_name = str(project_name or "").strip()
+    if not user_id or not project_name:
+        raise ValueError("Project name is required.")
+    if is_builtin(project_name) or project_name.lower() in ("xtranet", "shell", "backhaul", "link", "dgll"):
+        raise ValueError("That project name is already in use. Pick another name.")
+    key = project_name if project_name.lower().startswith(user_id.lower() + " — ") else f"{user_id} — {project_name}"
+    data = _load()
+    found = False
+    for row in data.get("users") or []:
+        if str(row.get("name") or "").strip().lower() != user_id.lower():
+            continue
+        found = True
+        projects = [str(p).strip() for p in (row.get("projects") or []) if str(p).strip()]
+        if key not in projects:
+            projects.append(key)
+        row["projects"] = projects
+    if not found:
+        raise ValueError("User not found.")
+    _save(data)
+    return key
+
+
+def match_login(user_id: str, password: str) -> dict | None:
+    user_id = str(user_id or "").strip()
+    password = str(password or "").strip()
+    if not user_id or not password:
         return None
-    if _admin_pin_ok(pin):
+    if user_id.lower() == "admin" and _admin_pin_ok(password):
         return {"name": "Admin", "projects": None, "admin": True}
-    digest = _hash(pin)
+    digest = _hash(password)
     for row in _load().get("users") or []:
-        if str(row.get("hash") or "") == digest:
-            projects = [str(p).strip() for p in (row.get("projects") or []) if str(p).strip()]
-            if not projects:
-                return None
-            return {"name": str(row.get("name") or "User"), "projects": projects, "admin": False}
+        if str(row.get("name") or "").strip().lower() != user_id.lower():
+            continue
+        if str(row.get("hash") or "") != digest:
+            return None
+        projects = [str(p).strip() for p in (row.get("projects") or []) if str(p).strip()]
+        return {"name": str(row.get("name") or user_id), "projects": projects, "admin": False}
     return None
 
 
@@ -124,6 +167,10 @@ def apply_access_scope() -> None:
     allowed = [p for p in (st.session_state.get("access_projects") or []) if p]
     if not allowed:
         st.session_state.projects = []
+        st.session_state.active_project = ""
+        st.session_state.closed_df = None
+        st.session_state.open_df = None
+        st.session_state.raw_tickets_df = None
         return
     st.session_state.projects = list(allowed)
     if st.session_state.get("active_project") not in allowed:
@@ -158,7 +205,7 @@ def ensure_logged_in() -> bool:
         <div style="max-width:460px;margin:8vh auto 0;padding:28px 26px;border-radius:16px;
                     background:#0f172a;color:#f8fafc;border:1px solid #334155;">
           <div style="font-size:1.4rem;font-weight:800;">Xtranet NOC</div>
-          <div style="opacity:.8;margin-top:6px;">Enter your passcode. You only see your own project.</div>
+          <div style="opacity:.8;margin-top:6px;">Sign in with your user ID. A new account starts empty — add your own Excel link.</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -182,21 +229,40 @@ def ensure_logged_in() -> bool:
                     st.rerun()
             return False
 
-        pin = st.text_input("Passcode", type="password", key="access_pin")
-        if st.button("Open", type="primary", use_container_width=True):
-            hit = match_passcode(pin)
+        user_id = st.text_input("User ID", key="access_user")
+        password = st.text_input("Password", type="password", key="access_pin")
+        c1, c2 = st.columns(2)
+        if c1.button("Sign in", type="primary", use_container_width=True):
+            hit = match_login(user_id, password)
             if not hit:
-                st.error("Wrong passcode.")
+                st.error("Wrong user ID or password.")
             else:
                 st.session_state.access_ok = True
                 st.session_state.access_admin = bool(hit.get("admin"))
                 st.session_state.access_name = hit.get("name")
-                st.session_state.access_projects = hit.get("projects")
+                st.session_state.access_projects = hit.get("projects") or []
                 st.session_state.closed_df = None
                 st.session_state.open_df = None
                 st.session_state.raw_tickets_df = None
                 st.session_state._view_project = None
+                st.session_state.project_store = {}
                 st.rerun()
+        if c2.button("Create account", use_container_width=True):
+            try:
+                register_user(user_id, password)
+                st.session_state.access_ok = True
+                st.session_state.access_admin = False
+                st.session_state.access_name = user_id.strip()
+                st.session_state.access_projects = []
+                st.session_state.closed_df = None
+                st.session_state.open_df = None
+                st.session_state.raw_tickets_df = None
+                st.session_state._view_project = None
+                st.session_state.project_store = {}
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+        st.caption("Admin sign in: user ID **admin** and the admin password. New users do not see that Excel.")
     return False
 
 
