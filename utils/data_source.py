@@ -222,6 +222,14 @@ def ensure_project_loaded():
     )
     if already == proj and has:
         return
+    from utils.custom_projects import get_project, is_builtin
+    cfg = {} if is_builtin(proj) else (get_project(proj) or {})
+    if cfg.get("sheet_url"):
+        try:
+            activate_sheet_link(proj, cfg["sheet_url"], attach=False)
+            return
+        except Exception as e:
+            st.session_state.data_source_note = str(e)[:180]
     if already != proj:
         st.session_state.selected_isps = None
         st.session_state["_isp_all_mode"] = True
@@ -229,6 +237,104 @@ def ensure_project_loaded():
     auto_load_tickets(force=True)
     st.session_state._view_project = proj
     apply_active()
+
+
+def activate_sheet_link(project: str, url: str, attach: bool = False) -> str:
+    """Load the exact gid in the Google link and use it on every report page."""
+    from utils.custom_projects import (
+        apply_user_columns,
+        guess_columns,
+        is_builtin,
+        parse_gid,
+        save_project,
+    )
+    from utils.google_sheets import extract_sheet_id, load_sheet_as_csv
+    from utils.data_processing import process_closed_tickets, process_open_tickets
+
+    project = str(project or "").strip()
+    url = str(url or "").strip()
+    if not project:
+        raise ValueError("Write the project name.")
+    sid = extract_sheet_id(url)
+    if not sid:
+        raise ValueError("Paste the full Google Sheet link. It must contain /spreadsheets/d/ and gid=.")
+    gid = parse_gid(url)
+    if attach:
+        from utils.access_gate import add_user_project
+        owner = str(st.session_state.get("access_name") or "").strip()
+        project = add_user_project(owner, project)
+        allowed = [p for p in (st.session_state.get("access_projects") or []) if p]
+        if project not in allowed:
+            allowed.append(project)
+        st.session_state.access_projects = allowed
+    init_data_source()
+    if project not in st.session_state.projects:
+        st.session_state.projects.append(project)
+    st.session_state.active_project = project
+    st.session_state.data_source = "google"
+
+    raw = load_sheet_as_csv(sid, gid=gid)
+    if raw is None or getattr(raw, "empty", True):
+        raise ValueError(f"No rows on gid {gid}. The link's gid must be the tab that has the tickets.")
+    guessed = guess_columns([str(c) for c in raw.columns])
+    mapped = apply_user_columns(raw, guessed, None)
+    processed = process_closed_tickets(mapped)
+    if processed is None or getattr(processed, "empty", True):
+        processed = mapped
+    if "ticket_id" in getattr(processed, "columns", []):
+        processed = processed.drop_duplicates(subset=["ticket_id"], keep="first")
+    opened = None
+    closed = processed
+    if "status" in processed.columns:
+        status_str = processed["status"].astype(str).str.lower()
+        open_mask = (
+            status_str.str.contains("assign to fe", na=False)
+            | status_str.str.contains("call on hold", na=False)
+            | status_str.str.contains("on hold", na=False)
+        )
+        opened = processed[open_mask].copy()
+        closed = processed[~open_mask].copy()
+        if opened is not None and not opened.empty:
+            opened = process_open_tickets(opened)
+        else:
+            opened = None
+        if closed is None or closed.empty:
+            closed = processed
+    if not is_builtin(project):
+        save_project(project, url, guessed, gid=gid)
+    note = f"Google Sheet • {project} • gid {gid}"
+    save_google(closed, opened, processed, note=note)
+    st.session_state._view_project = project
+    st.session_state.selected_isps = None
+    st.session_state["_isp_all_mode"] = True
+    apply_active()
+    n = 0 if processed is None else len(processed)
+    n_o = 0 if opened is None else len(opened)
+    return f"Loaded {n} tickets ({n_o} open) from gid {gid}. Every page uses this sheet."
+
+
+def _render_quick_sheet_load():
+    from utils.access_gate import is_admin
+    from utils.custom_projects import get_project
+
+    current = str(st.session_state.get("active_project") or "").strip()
+    saved = get_project(current) or {}
+    st.markdown("**Project name + sheet link**")
+    st.caption("Paste the link as it is, with gid=. Example: .../edit?gid=1980854633. That tab loads on every page.")
+    name = st.text_input("Project name", value=current, key="quick_proj_name")
+    url = st.text_input(
+        "Google Sheet link",
+        value=saved.get("sheet_url") or "",
+        key="quick_sheet_url",
+        placeholder="https://docs.google.com/spreadsheets/d/.../edit?pli=1&gid=1980854633",
+    )
+    if st.button("Load this sheet", type="primary", key="quick_sheet_btn"):
+        try:
+            msg = activate_sheet_link(name, url, attach=not is_admin())
+            st.success(msg)
+            st.rerun()
+        except Exception as e:
+            st.error(str(e)[:300])
 
 
 def source_status() -> str:
@@ -444,9 +550,11 @@ def render_source_bar():
 
     st.markdown("### Report data")
     st.caption(
-        "Xtranet NOC — pick the client project, then which file the reports should use. "
-        "A Google Sheet refresh never overwrites a manual Excel unless you switch to Google Sheet."
+        "Write the project name and paste the Google Sheet link. "
+        "The gid in the link is the only tab that is read. Every report page uses that tab."
     )
+    _render_quick_sheet_load()
+    st.caption(source_status())
     r1, r2, r3 = st.columns([1.4, 1.6, 1.2])
     with r1:
         opts = st.session_state.projects
