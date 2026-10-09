@@ -145,22 +145,31 @@ def add_user_project(user_id: str, project_name: str) -> str:
     return key
 
 
-def match_login(user_id: str, password: str) -> dict | None:
-    user_id = str(user_id or "").strip()
-    password = str(password or "").strip()
-    if not user_id or not password:
+def match_pin(pin: str) -> dict | None:
+    """4 digits only. Site PIN opens everything. A saved user PIN opens that user."""
+    raw = "".join(ch for ch in str(pin or "") if ch.isdigit())
+    if len(raw) != 4:
         return None
-    if user_id.lower() == "admin" and _admin_pin_ok(password):
+    if _admin_pin_ok(raw):
         return {"name": "Admin", "projects": None, "admin": True}
-    digest = _hash(password)
+    digest = _hash(raw)
     for row in _load().get("users") or []:
-        if str(row.get("name") or "").strip().lower() != user_id.lower():
-            continue
         if str(row.get("hash") or "") != digest:
-            return None
+            continue
         projects = [str(p).strip() for p in (row.get("projects") or []) if str(p).strip()]
-        return {"name": str(row.get("name") or user_id), "projects": projects, "admin": False}
+        return {"name": str(row.get("name") or "User"), "projects": projects, "admin": False}
     return None
+
+
+def _open_app(hit: dict) -> None:
+    hit["guide_seen"] = True
+    _apply_login(hit, start_session(hit))
+    st.session_state.closed_df = None
+    st.session_state.open_df = None
+    st.session_state.raw_tickets_df = None
+    st.session_state._view_project = None
+    st.session_state.project_store = {}
+    st.rerun()
 
 
 def _prune_sessions(data: dict) -> None:
@@ -409,18 +418,20 @@ def logout() -> None:
 
 def ensure_logged_in() -> bool:
     if not st.session_state.get("access_ok"):
-        token, ready = _read_browser_token()
-        if not ready:
-            waits = int(st.session_state.get("_ck_wait") or 0) + 1
-            st.session_state._ck_wait = waits
-            if waits <= 2:
-                st.stop()
-        else:
-            st.session_state._ck_wait = 0
+        try:
+            token, _ready = _read_browser_token()
+        except Exception:
+            token = ""
         if token:
-            _restore_session(token)
+            try:
+                _restore_session(token)
+            except Exception:
+                pass
     else:
-        touch_session(str(st.session_state.get("access_token") or ""))
+        try:
+            touch_session(str(st.session_state.get("access_token") or ""))
+        except Exception:
+            pass
     if st.session_state.get("access_ok"):
         apply_access_scope()
         with st.sidebar:
@@ -435,72 +446,48 @@ def ensure_logged_in() -> bool:
         <style>
         [data-testid="stSidebar"] { display: none; }
         .opsora-login {
-          max-width: 420px; margin: 10vh auto 0; padding: 28px 26px 22px;
+          max-width: 380px; margin: 12vh auto 0; padding: 28px 26px 8px;
           border-radius: 18px; background: #0f172a; color: #f8fafc;
-          border: 1px solid #334155; box-shadow: 0 18px 50px rgba(0,0,0,.35);
+          border: 1px solid #334155;
         }
         .opsora-login h1 { margin: 0; font-size: 1.7rem; font-weight: 800; color: #f8fafc; }
         .opsora-login p { margin: 6px 0 0; color: #94a3b8; font-size: 0.92rem; }
         </style>
         <div class="opsora-login">
           <h1>Opsora</h1>
-          <p>Sign in to your projects. A refresh stays signed in.</p>
+          <p>Enter the 4 digit PIN to open.</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    box = st.columns([1, 1.15, 1])[1]
+    box = st.columns([1, 0.9, 1])[1]
     with box:
         if not admin_configured() and not list_users():
-            st.info("First time only: set the admin password.")
-            pin1 = st.text_input("Admin password", type="password", key="boot_admin_1")
-            pin2 = st.text_input("Confirm password", type="password", key="boot_admin_2")
-            if st.button("Save admin password", type="primary"):
-                if pin1 != pin2 or len(str(pin1 or "").strip()) < 4:
-                    st.error("Passwords must match and be at least 4 characters.")
+            with st.form("set_pin"):
+                a = st.text_input("Set 4 digit PIN", max_chars=4, type="password")
+                b = st.text_input("Type it again", max_chars=4, type="password")
+                save = st.form_submit_button("Save and open", type="primary", use_container_width=True)
+            if save:
+                pa = "".join(ch for ch in str(a or "") if ch.isdigit())
+                pb = "".join(ch for ch in str(b or "") if ch.isdigit())
+                if len(pa) != 4 or pa != pb:
+                    st.error("PIN must be 4 numbers, and both boxes must match.")
                 else:
                     from utils.custom_projects import set_admin_pin
-                    set_admin_pin(pin1.strip())
-                    hit = {"name": "Admin", "admin": True, "projects": None, "guide_seen": False}
-                    _apply_login(hit, start_session(hit))
-                    st.rerun()
+                    set_admin_pin(pa)
+                    _open_app({"name": "Admin", "admin": True, "projects": None})
             return False
 
-        sign_in, create = st.tabs(["Sign in", "Create account"])
-        with sign_in:
-            user_id = st.text_input("User ID", key="access_user")
-            password = st.text_input("Password", type="password", key="access_pin")
-            if st.button("Sign in", type="primary", use_container_width=True):
-                hit = match_login(user_id, password)
-                if not hit:
-                    st.error("Wrong user ID or password.")
-                else:
-                    hit["guide_seen"] = _user_saw_guide(hit.get("name"), hit.get("admin"))
-                    _apply_login(hit, start_session(hit))
-                    st.session_state.closed_df = None
-                    st.session_state.open_df = None
-                    st.session_state.raw_tickets_df = None
-                    st.session_state._view_project = None
-                    st.session_state.project_store = {}
-                    st.rerun()
-            st.caption("Admin: user ID **admin** and the admin password.")
-        with create:
-            new_id = st.text_input("New user ID", key="reg_user")
-            new_pw = st.text_input("New password", type="password", key="reg_pin")
-            if st.button("Create account", type="primary", use_container_width=True):
-                try:
-                    register_user(new_id, new_pw)
-                    hit = {"name": new_id.strip(), "admin": False, "projects": [], "guide_seen": False}
-                    _apply_login(hit, start_session(hit))
-                    st.session_state.closed_df = None
-                    st.session_state.open_df = None
-                    st.session_state.raw_tickets_df = None
-                    st.session_state._view_project = None
-                    st.session_state.project_store = {}
-                    st.rerun()
-                except Exception as e:
-                    st.error(str(e))
-            st.caption("A new account is empty. Add a project name and your sheet link on Home.")
+        with st.form("pin_login"):
+            pin = st.text_input("4 digit PIN", max_chars=4, type="password", placeholder="••••")
+            go = st.form_submit_button("Open", type="primary", use_container_width=True)
+        if go:
+            hit = match_pin(pin)
+            if not hit:
+                st.error("Wrong PIN. Use 4 numbers only.")
+            else:
+                _open_app(hit)
+        st.caption("Numbers only. Refresh will stay open.")
     return False
 
 
@@ -508,20 +495,24 @@ def render_passcode_admin() -> None:
     if not is_admin():
         return
     with st.expander("Passcodes — one code, one project", expanded=False):
-        st.caption("Anyone can open the site. A passcode shows only the projects you tick. Admin passcode sees everything.")
+        st.caption("A 4 digit number opens only the projects you tick. Your own PIN opens everything.")
         from utils.data_source import init_data_source
         init_data_source()
         # Admin must see every project while assigning codes, not a filtered list.
         names = list(st.session_state.projects)
         who = st.text_input("Person / team name", key="acc_name")
-        code = st.text_input("Their passcode", type="password", key="acc_pin")
+        code = st.text_input("Their 4 digit PIN", max_chars=4, type="password", key="acc_pin")
         picks = st.multiselect("Projects they can open", names, key="acc_projects")
         if st.button("Save passcode", key="acc_save"):
-            try:
-                save_user(who, code, picks)
-                st.success(f"Passcode saved for {who.strip()}. They cannot open any other project.")
-            except Exception as e:
-                st.error(str(e))
+            pin = "".join(ch for ch in str(code or "") if ch.isdigit())
+            if len(pin) != 4:
+                st.error("PIN must be 4 numbers.")
+            else:
+                try:
+                    save_user(who, pin, picks)
+                    st.success(f"PIN saved for {who.strip()}.")
+                except Exception as e:
+                    st.error(str(e))
         rows = list_users()
         if rows:
             st.dataframe(
