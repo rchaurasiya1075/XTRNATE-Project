@@ -279,66 +279,11 @@ def mark_guide_seen() -> None:
     _save(data)
 
 
-def _cookie_manager():
+def _query_token() -> str:
     try:
-        import extra_streamlit_components as stx
+        return str(st.query_params.get("sid") or "").strip()
     except Exception:
-        return None
-    cm = st.session_state.get("_opsora_cm")
-    if cm is None:
-        cm = stx.CookieManager(key="opsora_cookie_mgr")
-        st.session_state._opsora_cm = cm
-    return cm
-
-
-def _read_browser_token():
-    """(token, ready). ready is False only while the browser cookie has not come back yet."""
-    cm = _cookie_manager()
-    if cm is None:
-        try:
-            return str(st.query_params.get("sid") or ""), True
-        except Exception:
-            return "", True
-    try:
-        bag = cm.get_all()
-    except Exception:
-        bag = None
-    if bag is None:
-        try:
-            q = str(st.query_params.get("sid") or "")
-        except Exception:
-            q = ""
-        return (q, True) if q else ("", False)
-    token = str((bag or {}).get(_COOKIE) or "")
-    if not token:
-        try:
-            token = str(st.query_params.get("sid") or "")
-        except Exception:
-            pass
-    return token, True
-
-
-def _save_browser_token(token: str) -> None:
-    if not token:
-        return
-    cm = _cookie_manager()
-    if cm is None:
-        return
-    try:
-        from datetime import datetime, timedelta
-        cm.set(_COOKIE, token, expires_at=datetime.now() + timedelta(hours=12), key="opsora_set_sid")
-    except Exception:
-        pass
-
-
-def _clear_browser_token() -> None:
-    cm = _cookie_manager()
-    if cm is None:
-        return
-    try:
-        cm.delete(_COOKIE, key="opsora_del_sid")
-    except Exception:
-        pass
+        return ""
 
 
 def _apply_login(hit: dict, token: str, remember: bool = True) -> None:
@@ -352,20 +297,17 @@ def _apply_login(hit: dict, token: str, remember: bool = True) -> None:
         st.query_params["sid"] = token
     except Exception:
         pass
-    _save_browser_token(token) if remember else None
 
 
 def _restore_session(token: str | None = None):
     if st.session_state.get("access_ok"):
         return True
     if not token:
-        token, ready = _read_browser_token()
-        if not ready:
-            return None
+        token = _query_token()
+    if not token:
+        return False
     row = read_session(token)
     if not row:
-        if token:
-            _clear_browser_token()
         return False
     touch_session(token)
     row["guide_seen"] = bool(row.get("guide_seen"))
@@ -402,7 +344,6 @@ def apply_access_scope() -> None:
 
 def logout() -> None:
     end_session(str(st.session_state.get("access_token") or ""))
-    _clear_browser_token()
     for key in (
         "access_ok", "access_admin", "access_name", "access_projects", "access_token",
         "closed_df", "open_df", "raw_tickets_df", "_view_project", "project_store",
@@ -419,7 +360,7 @@ def logout() -> None:
 def ensure_logged_in() -> bool:
     if not st.session_state.get("access_ok"):
         try:
-            token, _ready = _read_browser_token()
+            token = _query_token()
         except Exception:
             token = ""
         if token:
