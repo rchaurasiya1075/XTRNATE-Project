@@ -18,26 +18,7 @@ def _mark_updated():
     st.session_state.data_last_updated = datetime.now(IST)
 
 def _block_foreign_sheet() -> bool:
-    """A signed-in user who is not admin must not read the built-in Excel."""
-    if st.session_state.get("access_admin"):
-        return False
-    if not st.session_state.get("access_ok"):
-        return True
-    project = str(st.session_state.get("active_project") or "").strip()
-    if not project:
-        return True
-    if st.session_state.get("data_source") == "upload":
-        from utils.data_source import has_upload
-        if has_upload():
-            return False
-    try:
-        from utils.custom_projects import get_project, is_builtin
-        if is_builtin(project):
-            return True
-        cfg = get_project(project) or {}
-        return not str(cfg.get("sheet_url") or "").strip()
-    except Exception:
-        return True
+    return False
 
 
 def auto_load_tickets(force: bool = False):

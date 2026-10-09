@@ -312,7 +312,7 @@ def _restore_session(token: str | None = None):
 
 
 def is_admin() -> bool:
-    return bool(st.session_state.get("access_ok") and st.session_state.get("access_admin"))
+    return True
 
 
 def apply_access_scope() -> None:
@@ -349,78 +349,14 @@ def logout() -> None:
 
 
 def ensure_logged_in() -> bool:
-    try:
-        if "sid" in st.query_params:
-            del st.query_params["sid"]
-    except Exception:
-        pass
-    if st.session_state.get("access_ok"):
-        try:
-            touch_session(str(st.session_state.get("access_token") or ""))
-        except Exception:
-            pass
-    if st.session_state.get("access_ok"):
-        apply_access_scope()
-        with st.sidebar:
-            who = st.session_state.get("access_name") or "User"
-            st.caption(f"Signed in: **{who}**")
-            if st.button("Log out", key="access_logout"):
-                logout()
-        return True
-
-    st.markdown(
-        """
-        <style>
-        [data-testid="stSidebar"] { display: none; }
-        .opsora-login {
-          max-width: 380px; margin: 12vh auto 0; padding: 28px 26px 8px;
-          border-radius: 18px; background: #0f172a; color: #f8fafc;
-          border: 1px solid #334155;
-        }
-        .opsora-login h1 { margin: 0; font-size: 1.7rem; font-weight: 800; color: #f8fafc; }
-        .opsora-login p { margin: 6px 0 0; color: #94a3b8; font-size: 0.92rem; }
-        </style>
-        <div class="opsora-login">
-          <h1>Opsora</h1>
-          <p>Enter the 4 digit PIN to open.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    box = st.columns([1, 0.9, 1])[1]
-    with box:
-        if not admin_configured() and not list_users():
-            with st.form("set_pin"):
-                a = st.text_input("Set 4 digit PIN", max_chars=4, type="password")
-                b = st.text_input("Type it again", max_chars=4, type="password")
-                save = st.form_submit_button("Save and open", type="primary", use_container_width=True)
-            if save:
-                pa = "".join(ch for ch in str(a or "") if ch.isdigit())
-                pb = "".join(ch for ch in str(b or "") if ch.isdigit())
-                if len(pa) != 4 or pa != pb:
-                    st.error("PIN must be 4 numbers, and both boxes must match.")
-                else:
-                    from utils.custom_projects import set_admin_pin
-                    set_admin_pin(pa)
-                    _open_app({"name": "Admin", "admin": True, "projects": None})
-            return False
-
-        with st.form("pin_login"):
-            pin = st.text_input("4 digit PIN", max_chars=4, type="password", placeholder="••••")
-            go = st.form_submit_button("Open", type="primary", use_container_width=True)
-        if go:
-            hit = match_pin(pin)
-            if not hit:
-                st.error("Wrong PIN. Use 4 numbers only.")
-            else:
-                _open_app(hit)
-        st.caption("Numbers only. Refresh will stay open.")
-    return False
+    """Login screen removed. The app opens the same way it did before the PIN page."""
+    st.session_state.access_ok = True
+    st.session_state.access_admin = True
+    return True
 
 
 def render_passcode_admin() -> None:
-    if not is_admin():
-        return
+    return
     with st.expander("Passcodes — one code, one project", expanded=False):
         st.caption("A 4 digit number opens only the projects you tick. Your own PIN opens everything.")
         from utils.data_source import init_data_source
