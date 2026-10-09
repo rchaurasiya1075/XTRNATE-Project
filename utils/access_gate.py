@@ -293,10 +293,6 @@ def _apply_login(hit: dict, token: str, remember: bool = True) -> None:
     st.session_state.access_projects = hit.get("projects") or []
     st.session_state.access_token = token
     st.session_state.guide_seen = bool(hit.get("guide_seen"))
-    try:
-        st.query_params["sid"] = token
-    except Exception:
-        pass
 
 
 def _restore_session(token: str | None = None):
@@ -349,26 +345,16 @@ def logout() -> None:
         "closed_df", "open_df", "raw_tickets_df", "_view_project", "project_store",
     ):
         st.session_state.pop(key, None)
+    st.rerun()
+
+
+def ensure_logged_in() -> bool:
     try:
         if "sid" in st.query_params:
             del st.query_params["sid"]
     except Exception:
         pass
-    st.rerun()
-
-
-def ensure_logged_in() -> bool:
-    if not st.session_state.get("access_ok"):
-        try:
-            token = _query_token()
-        except Exception:
-            token = ""
-        if token:
-            try:
-                _restore_session(token)
-            except Exception:
-                pass
-    else:
+    if st.session_state.get("access_ok"):
         try:
             touch_session(str(st.session_state.get("access_token") or ""))
         except Exception:
