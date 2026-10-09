@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from utils.bootstrap import ensure_ready
 from utils.google_sheets import load_sheet_as_csv
 from utils.sheets_config import xtranet_id, gid as sheet_gid, tab_url
+from utils.page_sheet import page_source
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 
@@ -48,15 +49,21 @@ def pick_col(df, names):
 
 
 @st.cache_data(ttl=300)
-def load_inventory():
-    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("sim_inventory"))
+def load_inventory(sid: str = "", gid: int = 0):
+    if sid:
+        df = load_sheet_as_csv(sid, gid=int(gid or 0))
+    else:
+        df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("sim_inventory"))
     return uniquify_columns(df)
 
 
 err = None
 inv = None
+src = page_source("sim_inventory", "SIM inventory — site code, MDN, SIM number, status, telco.")
+if src is None:
+    st.stop()
 try:
-    inv = load_inventory()
+    inv = load_inventory(src[1], src[2]) if src[0] == "custom" else load_inventory()
 except Exception as e:
     err = str(e)
 

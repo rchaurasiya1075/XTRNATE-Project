@@ -426,34 +426,38 @@ def ensure_logged_in() -> bool:
         with st.sidebar:
             who = st.session_state.get("access_name") or "User"
             st.caption(f"Signed in: **{who}**")
-            if st.button("Guide", key="open_guide_btn"):
-                st.session_state.show_guide = True
-                st.rerun()
             if st.button("Log out", key="access_logout"):
                 logout()
-        if st.session_state.get("show_guide") or not guide_seen():
-            render_guide()
         return True
 
     st.markdown(
         """
-        <div style="max-width:460px;margin:8vh auto 0;padding:28px 26px;border-radius:16px;
-                    background:#0f172a;color:#f8fafc;border:1px solid #334155;">
-          <div style="font-size:1.4rem;font-weight:800;">Opsora</div>
-          <div style="opacity:.8;margin-top:6px;">Reports for any project. Sign in once — a refresh stays signed in.</div>
+        <style>
+        [data-testid="stSidebar"] { display: none; }
+        .opsora-login {
+          max-width: 420px; margin: 10vh auto 0; padding: 28px 26px 22px;
+          border-radius: 18px; background: #0f172a; color: #f8fafc;
+          border: 1px solid #334155; box-shadow: 0 18px 50px rgba(0,0,0,.35);
+        }
+        .opsora-login h1 { margin: 0; font-size: 1.7rem; font-weight: 800; color: #f8fafc; }
+        .opsora-login p { margin: 6px 0 0; color: #94a3b8; font-size: 0.92rem; }
+        </style>
+        <div class="opsora-login">
+          <h1>Opsora</h1>
+          <p>Sign in to your projects. A refresh stays signed in.</p>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    box = st.columns([1, 1.2, 1])[1]
+    box = st.columns([1, 1.15, 1])[1]
     with box:
         if not admin_configured() and not list_users():
-            st.info("First time only: set the admin passcode. After that, add a passcode for each project.")
-            pin1 = st.text_input("Admin passcode", type="password", key="boot_admin_1")
-            pin2 = st.text_input("Confirm passcode", type="password", key="boot_admin_2")
-            if st.button("Save admin passcode", type="primary"):
+            st.info("First time only: set the admin password.")
+            pin1 = st.text_input("Admin password", type="password", key="boot_admin_1")
+            pin2 = st.text_input("Confirm password", type="password", key="boot_admin_2")
+            if st.button("Save admin password", type="primary"):
                 if pin1 != pin2 or len(str(pin1 or "").strip()) < 4:
-                    st.error("Passcodes must match and be at least 4 characters.")
+                    st.error("Passwords must match and be at least 4 characters.")
                 else:
                     from utils.custom_projects import set_admin_pin
                     set_admin_pin(pin1.strip())
@@ -462,36 +466,41 @@ def ensure_logged_in() -> bool:
                     st.rerun()
             return False
 
-        user_id = st.text_input("User ID", key="access_user")
-        password = st.text_input("Password", type="password", key="access_pin")
-        c1, c2 = st.columns(2)
-        if c1.button("Sign in", type="primary", use_container_width=True):
-            hit = match_login(user_id, password)
-            if not hit:
-                st.error("Wrong user ID or password.")
-            else:
-                hit["guide_seen"] = _user_saw_guide(hit.get("name"), hit.get("admin"))
-                _apply_login(hit, start_session(hit))
-                st.session_state.closed_df = None
-                st.session_state.open_df = None
-                st.session_state.raw_tickets_df = None
-                st.session_state._view_project = None
-                st.session_state.project_store = {}
-                st.rerun()
-        if c2.button("Create account", use_container_width=True):
-            try:
-                register_user(user_id, password)
-                hit = {"name": user_id.strip(), "admin": False, "projects": [], "guide_seen": False}
-                _apply_login(hit, start_session(hit))
-                st.session_state.closed_df = None
-                st.session_state.open_df = None
-                st.session_state.raw_tickets_df = None
-                st.session_state._view_project = None
-                st.session_state.project_store = {}
-                st.rerun()
-            except Exception as e:
-                st.error(str(e))
-        st.caption("Admin sign in: user ID **admin** and the admin password. New users do not see that Excel.")
+        sign_in, create = st.tabs(["Sign in", "Create account"])
+        with sign_in:
+            user_id = st.text_input("User ID", key="access_user")
+            password = st.text_input("Password", type="password", key="access_pin")
+            if st.button("Sign in", type="primary", use_container_width=True):
+                hit = match_login(user_id, password)
+                if not hit:
+                    st.error("Wrong user ID or password.")
+                else:
+                    hit["guide_seen"] = _user_saw_guide(hit.get("name"), hit.get("admin"))
+                    _apply_login(hit, start_session(hit))
+                    st.session_state.closed_df = None
+                    st.session_state.open_df = None
+                    st.session_state.raw_tickets_df = None
+                    st.session_state._view_project = None
+                    st.session_state.project_store = {}
+                    st.rerun()
+            st.caption("Admin: user ID **admin** and the admin password.")
+        with create:
+            new_id = st.text_input("New user ID", key="reg_user")
+            new_pw = st.text_input("New password", type="password", key="reg_pin")
+            if st.button("Create account", type="primary", use_container_width=True):
+                try:
+                    register_user(new_id, new_pw)
+                    hit = {"name": new_id.strip(), "admin": False, "projects": [], "guide_seen": False}
+                    _apply_login(hit, start_session(hit))
+                    st.session_state.closed_df = None
+                    st.session_state.open_df = None
+                    st.session_state.raw_tickets_df = None
+                    st.session_state._view_project = None
+                    st.session_state.project_store = {}
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+            st.caption("A new account is empty. Add a project name and your sheet link on Home.")
     return False
 
 
@@ -524,59 +533,3 @@ def render_passcode_admin() -> None:
             if st.button("Delete this passcode", key="acc_del_btn"):
                 delete_user(victim)
                 st.rerun()
-
-
-def render_guide() -> None:
-    """First login: what the app is, with a sample row. Not loaded into reports."""
-    import pandas as pd
-
-    show = st.session_state.get("show_guide") or not guide_seen()
-    if not show:
-        return
-    st.markdown("### Welcome to Opsora")
-    st.caption("This is a short guide. Your reports are unchanged. Close it when you know the pages.")
-    st.markdown(
-        """
-**What this is**  
-Opsora turns one Google Sheet into ticket, SLA and site reports. Each user sees only their own project.
-
-**Start**  
-1. On Home, write a **project name**.  
-2. Paste the Google Sheet link, including `gid=`.  
-3. Click **Load this sheet**.  
-4. Open Dashboard, Site Search, Closed Analysis or Partner Report. They all use that sheet.
-
-**Pages**  
-- **Tickets** — site search, dashboard, open calls, closed and repeat sites.  
-- **ISP & Partner** — compare partners, vendor performance, vendor change.  
-- **SLA & Reports** — monthly SLA, penalty, holiday downtime, conclusion slides.  
-- **Daily Ops** — VPN update and the pending-call mail.  
-- **Tools** — Excel to PowerPoint, and upload a file if you are not using a Google link.
-
-**Sample row** (example only — this is not your data)
-"""
-    )
-    sample = pd.DataFrame([
-        {
-            "Incident ID": "IN071026-0003354",
-            "Site code": "XTNPIT355",
-            "Status": "Assign to FE",
-            "Owner": "HCIN",
-            "State": "Uttarakhand",
-            "Submitted": "2026-10-07 16:31",
-        },
-        {
-            "Incident ID": "IN071026-0002407",
-            "Site code": "XTNUDN388",
-            "Status": "Resolved",
-            "Owner": "ONEOTT",
-            "State": "Punjab",
-            "Submitted": "2026-10-07 12:59",
-        },
-    ])
-    st.dataframe(sample, hide_index=True, use_container_width=True)
-    st.caption("Your sheet should have the same kind of columns: Incident ID, site code, status, owner, time, state. If the names differ, map them once under the link box.")
-    if st.button("Got it — hide this guide", type="primary", key="guide_done"):
-        mark_guide_seen()
-        st.rerun()
-    st.divider()

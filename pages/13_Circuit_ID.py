@@ -12,6 +12,7 @@ from utils.bootstrap import ensure_ready
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 from utils.sheets_config import xtranet_id, xtranet_url, gid as sheet_gid
+from utils.page_sheet import page_source
 
 st.set_page_config(page_title="Circuit ID | Opsora", page_icon="🔌", layout="wide")
 ensure_ready()
@@ -41,9 +42,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_data(ttl=300, show_spinner=False)
-def load_ckt_master():
-    sid = extract_sheet_id(xtranet_url()) or xtranet_id()
-    df = load_sheet_as_csv(sid, gid=sheet_gid("circuit"))
+def load_ckt_master(sid: str = "", gid: int = 0):
+    if not sid:
+        sid = extract_sheet_id(xtranet_url()) or xtranet_id()
+        gid = sheet_gid("circuit")
+    df = load_sheet_as_csv(sid, gid=int(gid or 0))
     df.columns = [str(c).strip() for c in df.columns]
     rename = {
         'Site Code': 'site_code',
@@ -86,7 +89,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 try:
-    master = load_ckt_master()
+    src = page_source("circuit", "Circuit ID sheet — site code, CKT ID, ISP, branch, state.")
+    if src is None:
+        st.stop()
+    master = load_ckt_master(src[1], src[2]) if src[0] == "custom" else load_ckt_master()
 except Exception as e:
     st.error(f"CKT master load fail: {e}")
     st.stop()

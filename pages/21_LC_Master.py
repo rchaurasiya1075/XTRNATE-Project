@@ -16,6 +16,7 @@ from utils.sheet_write import (
     phone_keys, unique_contact,
 )
 from utils.sheets_config import xtranet_id, ops_id, gid as sheet_gid, csv_url
+from utils.page_sheet import page_source
 
 st.set_page_config(page_title="LC Master | Opsora", page_icon="📋", layout="wide")
 ensure_ready()
@@ -86,8 +87,11 @@ def map_col(df, dest, *names):
 
 
 @st.cache_data(ttl=120, show_spinner=False)
-def load_old_lc():
-    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("lc_master"))
+def load_old_lc(sid: str = "", gid: int = 0):
+    if sid:
+        df = load_sheet_as_csv(sid, gid=int(gid or 0))
+    else:
+        df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("lc_master"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "hughes site code", "site code") or df.columns[1]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -212,19 +216,26 @@ def apply_rows(rows, name_col, phone_col, src_label):
 
 
 try:
-    old = load_old_lc()
+    src = page_source("lc_master", "LC master — site code, branch person name, contact number.")
+    if src is None:
+        st.stop()
+    old = load_old_lc(src[1], src[2]) if src[0] == "custom" else load_old_lc()
 except Exception as e:
     st.error(f"LC tab load fail: {e}")
     st.stop()
-try:
-    mail = load_pending_mail()
-except Exception as e:
-    st.warning(f"Pending mail load: {e}")
+if src[0] == "custom":
     mail = pd.DataFrame(columns=["site_code", "mail_name", "mail_phone"])
-try:
-    target = load_target()
-except Exception:
     target = pd.DataFrame()
+else:
+    try:
+        mail = load_pending_mail()
+    except Exception as e:
+        st.warning(f"Pending mail load: {e}")
+        mail = pd.DataFrame(columns=["site_code", "mail_name", "mail_phone"])
+    try:
+        target = load_target()
+    except Exception:
+        target = pd.DataFrame()
 
 if st.button("Reload + auto (re-read full sheet)"):
     load_old_lc.clear()

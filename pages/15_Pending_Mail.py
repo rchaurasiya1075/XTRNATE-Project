@@ -13,6 +13,8 @@ from utils.data_processing import classify_isp
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 from utils.sheets_config import csv_url
+from utils.page_sheet import page_source
+from utils.google_sheets import load_sheet_as_csv
 
 st.set_page_config(page_title="Pending Mail | Opsora", page_icon="📧", layout="wide")
 ensure_ready()
@@ -213,7 +215,15 @@ if st.button("🔄 Reload mail data"):
     st.rerun()
 
 df = pd.DataFrame()
-if str(project).strip().lower() == "xtranet":
+src = page_source("pending_mail", "Open calls / pending mail sheet. Leave it if this project's open tickets are enough.")
+if src is not None and src[0] == "custom":
+    try:
+        with st.spinner("Loading the sheet you pasted…"):
+            df = load_sheet_as_csv(src[1], gid=int(src[2] or 0))
+            df.columns = [str(c).strip() for c in df.columns]
+    except Exception as e:
+        st.caption(f"Pasted sheet skipped: {e}")
+elif str(project).strip().lower() == "xtranet":
     try:
         with st.spinner("Loading OPEN CALLS sheet…"):
             df = load_mail_sheet()

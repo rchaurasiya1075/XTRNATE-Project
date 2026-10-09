@@ -14,6 +14,7 @@ from utils.data_processing import isp_options, classify_isp
 from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 from utils.sheets_config import xtranet_id, gid as sheet_gid
+from utils.page_sheet import page_source
 
 PLAN_GB = 10.0
 MONTHS = ["january", "february", "march", "april", "may", "june",
@@ -112,8 +113,11 @@ def norm_isp(v):
 
 
 @st.cache_data(ttl=180)
-def load_usage():
-    df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("sim_usage"))
+def load_usage(sid: str = "", gid: int = 0):
+    if sid:
+        df = load_sheet_as_csv(sid, gid=int(gid or 0))
+    else:
+        df = load_sheet_as_csv(xtranet_id(), gid=sheet_gid("sim_usage"))
     df.columns = [str(c).strip() for c in df.columns]
     return df
 
@@ -127,7 +131,10 @@ with c2:
         st.rerun()
 
 try:
-    usage = load_usage()
+    src = page_source("sim_usage", "SIM data usage — one row per site, month columns in GB.")
+    if src is None:
+        st.stop()
+    usage = load_usage(src[1], src[2]) if src[0] == "custom" else load_usage()
 except Exception as e:
     st.error(f"Usage sheet load fail: {e}")
     st.stop()

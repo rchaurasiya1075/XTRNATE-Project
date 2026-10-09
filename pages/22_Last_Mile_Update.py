@@ -15,6 +15,7 @@ from utils.excel_export import excel_bytes
 from utils.report_download import download_pack
 from utils.sheet_write import HEADERS, append_last_mile_log, sa_email
 from utils.sheets_config import xtranet_id, ops_id, gid as sheet_gid, csv_url, edit_url
+from utils.page_sheet import page_source
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -38,8 +39,11 @@ def _col(df, *names):
 
 
 @st.cache_data(ttl=180, show_spinner=False)
-def load_master():
-    df = load_sheet_as_csv(ops_id(), gid=sheet_gid("last_mile_master"))
+def load_master(sid: str = "", gid: int = 0):
+    if sid:
+        df = load_sheet_as_csv(sid, gid=int(gid or 0))
+    else:
+        df = load_sheet_as_csv(ops_id(), gid=sheet_gid("last_mile_master"))
     df.columns = [str(c).strip() for c in df.columns]
     sc = _col(df, "hughessitecode", "site code", "sitecode") or df.columns[1]
     df["site_code"] = df[sc].astype(str).str.strip().str.upper()
@@ -96,19 +100,26 @@ def val(row, *names):
 
 
 try:
-    master = load_master()
+    src = page_source("last_mile", "Last mile master — site code, last mile, branch contact.")
+    if src is None:
+        st.stop()
+    master = load_master(src[1], src[2]) if src[0] == "custom" else load_master()
 except Exception as e:
     st.error(f"Site master load fail: {e}")
     st.stop()
 
-try:
-    calls = load_open_calls()
-except Exception:
+if src[0] == "custom":
     calls = pd.DataFrame()
-try:
-    ckt = load_ckt()
-except Exception:
     ckt = pd.DataFrame()
+else:
+    try:
+        calls = load_open_calls()
+    except Exception:
+        calls = pd.DataFrame()
+    try:
+        ckt = load_ckt()
+    except Exception:
+        ckt = pd.DataFrame()
 
 q = st.text_input("Site code", placeholder="XTNCHG364").strip().upper()
 

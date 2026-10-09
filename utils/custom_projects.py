@@ -138,12 +138,35 @@ def save_project(name: str, sheet_url: str, columns: dict, gid: int | None = Non
         "gid": int(gid or 0),
         "columns": clean,
         "extra": extras if extra is not None else list(prev.get("extra") or []),
+        "pages": dict(prev.get("pages") or {}),
     }
     _save(data)
     try:
         import streamlit as st
         bag = dict(st.session_state.get("_custom_cfg") or {})
         bag[name] = data[name]
+        st.session_state._custom_cfg = bag
+    except Exception:
+        pass
+
+
+def set_page_sheet(name: str, page_key: str, url: str) -> None:
+    """Remember one extra tab (SIM, circuit, LC) for this project."""
+    name = str(name or "").strip()
+    page_key = str(page_key or "").strip()
+    if not name or not page_key or is_builtin(name) or name.startswith("_"):
+        return
+    data = _load()
+    item = data.get(name) if isinstance(data.get(name), dict) else {}
+    pages = dict(item.get("pages") or {})
+    pages[page_key] = str(url or "").strip()
+    item["pages"] = pages
+    data[name] = item
+    _save(data)
+    try:
+        import streamlit as st
+        bag = dict(st.session_state.get("_custom_cfg") or {})
+        bag[name] = item
         st.session_state._custom_cfg = bag
     except Exception:
         pass
