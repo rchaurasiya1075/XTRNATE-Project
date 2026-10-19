@@ -17,7 +17,11 @@ ensure_ready()
 
 
 def is_open_status(s):
-    t = str(s or "").lower()
+    t = str(s or "").strip().lower()
+    if not t or t in ("--", "nan", "none", "nat", "null"):
+        return False
+    if "resolv" in t or "closed" in t or t == "close" or "cancel" in t:
+        return False
     return (
         ("assign to fe" in t)
         or ("call on hold" in t)
@@ -25,6 +29,30 @@ def is_open_status(s):
         or ("under progress" in t)
         or ("underprogress" in t)
     )
+
+
+def xtranet_daily_open():
+    """Today's real open list. History still has old rows marked open after they left this sheet."""
+    project = str(st.session_state.get("active_project") or "Xtranet").strip().lower()
+    if "xtranet" not in project:
+        return None
+    try:
+        from utils.sheets_config import gid as sheet_gid
+        from utils.sheets_config import ops_id
+        from utils.google_sheets import load_sheet_as_csv
+        from utils.data_processing import process_closed_tickets
+        raw = load_sheet_as_csv(ops_id(), gid=int(sheet_gid("daily_open")))
+        if raw is None or raw.empty:
+            return None
+        live = process_closed_tickets(raw)
+        live = apply_isp_filter(live)
+        if live is None or live.empty:
+            return live
+        if "ticket_id" in live.columns:
+            live = live.drop_duplicates(subset=["ticket_id"], keep="first")
+        return live
+    except Exception:
+        return None
 
 
 def is_hold(s):
@@ -171,7 +199,15 @@ if not frames:
 all_df = pd.concat(frames, ignore_index=True)
 all_df = apply_isp_filter(all_df)
 if "ticket_id" in all_df.columns:
-    all_df = all_df.drop_duplicates(subset=["ticket_id"], keep="first")
+    # Same ticket can sit in history (closed, blank resolved time) and in the live open list.
+    # Keep the live open row so a closed ticket is not counted again.
+    if "status" in all_df.columns:
+        all_df = all_df.copy()
+        all_df["_open_rank"] = all_df["status"].map(lambda s: 0 if is_open_status(s) else 1)
+        all_df = all_df.sort_values("_open_rank").drop_duplicates(subset=["ticket_id"], keep="first")
+        all_df = all_df.drop(columns=["_open_rank"])
+    else:
+        all_df = all_df.drop_duplicates(subset=["ticket_id"], keep="last")
 
 if "submitted_time" not in all_df.columns:
     st.error("Submitted Time not found.")
@@ -201,8 +237,14 @@ open_as_of = (
 
 if "status" in all_df.columns:
     status_open_now = all_df["status"].apply(is_open_status)
+    # Today: only a real open status counts. A closed row with an empty resolved time is not open.
     if ref_day == date.today():
-        open_as_of = open_as_of | status_open_now
+        open_as_of = status_open_now & all_df["submitted_time"].notna() & (all_df["submitted_time"] < day_end)
+        open_as_of = open_as_of & (all_df["resolved_time"].isna() | (all_df["resolved_time"] >= day_end))
+    else:
+        open_as_of = open_as_of & ~all_df["status"].map(
+            lambda s: ("resolv" in str(s or "").lower()) or ("closed" in str(s or "").lower()) or (str(s or "").strip().lower() == "close")
+        )
     hold_mask = all_df["status"].apply(is_hold)
 else:
     hold_mask = pd.Series(False, index=all_df.index)
@@ -213,6 +255,22 @@ today_raised = all_df[raised_on_day].copy()
 call_hold = all_df[open_as_of & hold_mask].copy()
 old_resolved = all_df[resolved_on_day & raised_before].copy()
 same_day_resolved = all_df[resolved_on_day & raised_on_day].copy()
+
+if ref_day == date.today():
+    live = xtranet_daily_open()
+    if live is not None and not live.empty:
+        live = live.copy()
+        if "submitted_time" in live.columns:
+            live["submitted_time"] = pd.to_datetime(live["submitted_time"], errors="coerce")
+        else:
+            live["submitted_time"] = pd.NaT
+        open_now = live[live["submitted_time"].isna() | (live["submitted_time"] < day_end)].copy()
+        raised_live = open_now["submitted_time"].notna() & (open_now["submitted_time"] >= day_start) & (open_now["submitted_time"] < day_end)
+        old_open = open_now.loc[~raised_live].copy()
+        if "status" in open_now.columns:
+            call_hold = open_now[open_now["status"].apply(is_hold)].copy()
+        else:
+            call_hold = open_now.iloc[0:0].copy()
 
 open_now["vendor"] = open_now.apply(vendor_bucket, axis=1)
 celerity_open = open_now[open_now["vendor"] == "CELERITY / ONEOTT"]
