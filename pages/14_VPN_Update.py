@@ -31,39 +31,6 @@ def is_open_status(s):
     )
 
 
-def xtranet_daily_open():
-    """Live open calls from the daily open sheet. Not the month filter, not the saved session."""
-    import time
-    from utils.sheets_config import gid as sheet_gid
-    from utils.sheets_config import ops_id
-    from utils.data_processing import process_closed_tickets, filter_by_isps
-    from utils.bootstrap import get_selected_isps
-
-    sid = ops_id()
-    gid = int(sheet_gid("daily_open"))
-    url = (
-        f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv"
-        f"&gid={gid}&t={int(time.time())}"
-    )
-    raw = pd.read_csv(url)
-    if raw is None or raw.empty:
-        return raw
-    raw.columns = [str(c).strip() for c in raw.columns]
-    live = process_closed_tickets(raw)
-    if live is None or live.empty:
-        return live
-    if "ticket_id" in live.columns:
-        live = live[live["ticket_id"].astype(str).str.strip().ne("")].copy()
-        live = live.drop_duplicates(subset=["ticket_id"], keep="first")
-    if not st.session_state.get("_isp_all_mode"):
-        picked = get_selected_isps()
-        if picked:
-            filtered = filter_by_isps(live, picked)
-            if filtered is not None and not filtered.empty:
-                live = filtered
-    return live
-
-
 def is_hold(s):
     t = str(s or "").lower()
     return ("call on hold" in t) or (t.strip() == "on hold")
@@ -265,33 +232,42 @@ call_hold = all_df[open_as_of & hold_mask].copy()
 old_resolved = all_df[resolved_on_day & raised_before].copy()
 same_day_resolved = all_df[resolved_on_day & raised_on_day].copy()
 
-if ref_day == date.today():
-    live = None
-    live_err = ""
-    try:
-        live = xtranet_daily_open()
-    except Exception as e:
-        live_err = str(e)
-    if live is not None and not live.empty:
-        live = live.copy()
-        if "submitted_time" in live.columns:
-            live["submitted_time"] = pd.to_datetime(live["submitted_time"], errors="coerce")
-        else:
-            live["submitted_time"] = pd.NaT
-        open_now = live[live["submitted_time"].isna() | (live["submitted_time"] < day_end)].copy()
-        raised_live = (
-            open_now["submitted_time"].notna()
-            & (open_now["submitted_time"] >= day_start)
-            & (open_now["submitted_time"] < day_end)
-        )
-        old_open = open_now.loc[~raised_live].copy()
-        if "status" in open_now.columns:
-            call_hold = open_now[open_now["status"].apply(is_hold)].copy()
-        else:
-            call_hold = open_now.iloc[0:0].copy()
-        st.caption(f"Open calls live from daily sheet • {len(open_now)} open right now")
-    elif live_err:
-        st.warning(f"Daily open sheet did not load, so the saved list is shown. {live_err}")
+# Same open list as Home: the loaded project file, after ISP and date filters.
+# Do not swap in the daily open sheet — that list is larger than the project data.
+home_open = apply_isp_filter(opened) if opened is not None else None
+if home_open is not None and not getattr(home_open, "empty", True):
+    home_open = home_open.copy()
+    if "submitted_time" in home_open.columns:
+        home_open["submitted_time"] = pd.to_datetime(home_open["submitted_time"], errors="coerce")
+    else:
+        home_open["submitted_time"] = pd.NaT
+    if ref_day == date.today():
+        open_now = home_open[home_open["submitted_time"].isna() | (home_open["submitted_time"] < day_end)].copy()
+    else:
+        still = home_open["submitted_time"].isna() | (home_open["submitted_time"] < day_end)
+        if "resolved_time" in home_open.columns:
+            rt = pd.to_datetime(home_open["resolved_time"], errors="coerce")
+            still = still & (rt.isna() | (rt >= day_end))
+        open_now = home_open.loc[still].copy()
+    raised_live = (
+        open_now["submitted_time"].notna()
+        & (open_now["submitted_time"] >= day_start)
+        & (open_now["submitted_time"] < day_end)
+    )
+    old_open = open_now.loc[~raised_live].copy()
+    if "status" in open_now.columns:
+        call_hold = open_now[open_now["status"].apply(is_hold)].copy()
+    else:
+        call_hold = open_now.iloc[0:0].copy()
+elif ref_day == date.today() and "status" in all_df.columns:
+    open_now = all_df[status_open_now & (all_df["submitted_time"].isna() | (all_df["submitted_time"] < day_end))].copy()
+    raised_live = (
+        open_now["submitted_time"].notna()
+        & (open_now["submitted_time"] >= day_start)
+        & (open_now["submitted_time"] < day_end)
+    )
+    old_open = open_now.loc[~raised_live].copy()
+    call_hold = open_now[open_now["status"].apply(is_hold)].copy() if "status" in open_now.columns else open_now.iloc[0:0]
 
 open_now["vendor"] = open_now.apply(vendor_bucket, axis=1)
 celerity_open = open_now[open_now["vendor"] == "CELERITY / ONEOTT"]
