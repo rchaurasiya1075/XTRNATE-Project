@@ -32,27 +32,36 @@ def is_open_status(s):
 
 
 def xtranet_daily_open():
-    """Today's real open list. History still has old rows marked open after they left this sheet."""
-    project = str(st.session_state.get("active_project") or "Xtranet").strip().lower()
-    if "xtranet" not in project:
-        return None
-    try:
-        from utils.sheets_config import gid as sheet_gid
-        from utils.sheets_config import ops_id
-        from utils.google_sheets import load_sheet_as_csv
-        from utils.data_processing import process_closed_tickets
-        raw = load_sheet_as_csv(ops_id(), gid=int(sheet_gid("daily_open")))
-        if raw is None or raw.empty:
-            return None
-        live = process_closed_tickets(raw)
-        live = apply_isp_filter(live)
-        if live is None or live.empty:
-            return live
-        if "ticket_id" in live.columns:
-            live = live.drop_duplicates(subset=["ticket_id"], keep="first")
+    """Live open calls from the daily open sheet. Not the month filter, not the saved session."""
+    import time
+    from utils.sheets_config import gid as sheet_gid
+    from utils.sheets_config import ops_id
+    from utils.data_processing import process_closed_tickets, filter_by_isps
+    from utils.bootstrap import get_selected_isps
+
+    sid = ops_id()
+    gid = int(sheet_gid("daily_open"))
+    url = (
+        f"https://docs.google.com/spreadsheets/d/{sid}/export?format=csv"
+        f"&gid={gid}&t={int(time.time())}"
+    )
+    raw = pd.read_csv(url)
+    if raw is None or raw.empty:
+        return raw
+    raw.columns = [str(c).strip() for c in raw.columns]
+    live = process_closed_tickets(raw)
+    if live is None or live.empty:
         return live
-    except Exception:
-        return None
+    if "ticket_id" in live.columns:
+        live = live[live["ticket_id"].astype(str).str.strip().ne("")].copy()
+        live = live.drop_duplicates(subset=["ticket_id"], keep="first")
+    if not st.session_state.get("_isp_all_mode"):
+        picked = get_selected_isps()
+        if picked:
+            filtered = filter_by_isps(live, picked)
+            if filtered is not None and not filtered.empty:
+                live = filtered
+    return live
 
 
 def is_hold(s):
@@ -257,7 +266,12 @@ old_resolved = all_df[resolved_on_day & raised_before].copy()
 same_day_resolved = all_df[resolved_on_day & raised_on_day].copy()
 
 if ref_day == date.today():
-    live = xtranet_daily_open()
+    live = None
+    live_err = ""
+    try:
+        live = xtranet_daily_open()
+    except Exception as e:
+        live_err = str(e)
     if live is not None and not live.empty:
         live = live.copy()
         if "submitted_time" in live.columns:
@@ -265,12 +279,19 @@ if ref_day == date.today():
         else:
             live["submitted_time"] = pd.NaT
         open_now = live[live["submitted_time"].isna() | (live["submitted_time"] < day_end)].copy()
-        raised_live = open_now["submitted_time"].notna() & (open_now["submitted_time"] >= day_start) & (open_now["submitted_time"] < day_end)
+        raised_live = (
+            open_now["submitted_time"].notna()
+            & (open_now["submitted_time"] >= day_start)
+            & (open_now["submitted_time"] < day_end)
+        )
         old_open = open_now.loc[~raised_live].copy()
         if "status" in open_now.columns:
             call_hold = open_now[open_now["status"].apply(is_hold)].copy()
         else:
             call_hold = open_now.iloc[0:0].copy()
+        st.caption(f"Open calls live from daily sheet • {len(open_now)} open right now")
+    elif live_err:
+        st.warning(f"Daily open sheet did not load, so the saved list is shown. {live_err}")
 
 open_now["vendor"] = open_now.apply(vendor_bucket, axis=1)
 celerity_open = open_now[open_now["vendor"] == "CELERITY / ONEOTT"]
