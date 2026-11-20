@@ -140,6 +140,7 @@ isp_partner = [
     st.Page("pages/8_ISP_Comparison.py", title="ISP Comparison", icon="⚖️"),
     st.Page("pages/12_Partner_Report.py", title="Partner Report", icon="📄"),
     st.Page("pages/9_Vendor_Performance.py", title="Vendor Performance", icon="📈"),
+    st.Page("pages/28_Vendor_Report.py", title="Vendor Report", icon="📑"),
     st.Page("pages/20_Vendor_Change.py", title="Vendor Change", icon="🔄"),
 ]
 sla_reports = [

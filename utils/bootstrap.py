@@ -160,21 +160,42 @@ def isp_label(selected=None):
     return " + ".join(selected)
 
 
+def _naive_times(series):
+    ts = pd.to_datetime(series, errors="coerce")
+    try:
+        if getattr(ts.dt, "tz", None) is not None:
+            ts = ts.dt.tz_convert("Asia/Kolkata").dt.tz_localize(None)
+    except Exception:
+        try:
+            ts = ts.dt.tz_localize(None)
+        except Exception:
+            pass
+    return ts
+
+
+def _period_column(df):
+    """Use the date column that actually has values. Submitted time first."""
+    best, best_n = None, -1
+    for c in ("submitted_time", "Submitted Time", "resolved_time", "Resolved Time"):
+        if c not in df.columns:
+            continue
+        n = int(_naive_times(df[c]).notna().sum())
+        if n > best_n:
+            best, best_n = c, n
+    return best if best_n > 0 else None
+
+
 def apply_period_filter(df):
-    """Last 1–7 months or custom From–To on submitted_time. Default = all data."""
+    """Last N months, picked months, or custom From–To. Default = all data."""
     if df is None or getattr(df, "empty", True):
         return df
     mode = st.session_state.get("period_mode") or "All time"
     if mode == "All time":
         return df
-    col = None
-    for c in ("submitted_time", "Submitted Time", "resolved_time"):
-        if c in df.columns:
-            col = c
-            break
+    col = _period_column(df)
     if col is None:
         return df
-    ts = pd.to_datetime(df[col], errors="coerce")
+    ts = _naive_times(df[col])
     if mode == "Custom":
         d0 = st.session_state.get("period_from")
         d1 = st.session_state.get("period_to")
@@ -182,6 +203,8 @@ def apply_period_filter(df):
             return df
         start = pd.Timestamp(d0)
         end = pd.Timestamp(d1) + pd.Timedelta(days=1)
+        if end < start:
+            start, end = end - pd.Timedelta(days=1), start + pd.Timedelta(days=1)
         return df.loc[ts.notna() & (ts >= start) & (ts < end)].copy()
     if mode == "Pick":
         years = [int(y) for y in (st.session_state.get("period_pick_years") or [])]
@@ -196,7 +219,8 @@ def apply_period_filter(df):
     months = int(st.session_state.get("period_months") or 0)
     if months <= 0:
         return df
-    cutoff = pd.Timestamp(datetime.now(IST).replace(tzinfo=None)) - pd.DateOffset(months=months)
+    now = pd.Timestamp(datetime.now(IST).replace(tzinfo=None))
+    cutoff = (now.to_period("M") - (months - 1)).to_timestamp()
     return df.loc[ts.notna() & (ts >= cutoff)].copy()
 
 
@@ -281,6 +305,10 @@ def render_period_filter():
         )
         if isinstance(rng, (list, tuple)) and len(rng) == 2 and rng[0] and rng[1]:
             st.session_state.period_from, st.session_state.period_to = rng[0], rng[1]
+        elif isinstance(rng, (list, tuple)) and len(rng) == 1 and rng[0]:
+            st.session_state.period_from = st.session_state.period_to = rng[0]
+        elif rng and not isinstance(rng, (list, tuple)):
+            st.session_state.period_from = st.session_state.period_to = rng
     mode = st.session_state.period_mode
     if mode == "Pick":
         st.multiselect("Year", PICK_YEARS, key="period_pick_years")
@@ -302,6 +330,10 @@ def render_period_filter():
         st.caption(f"Showing **{st.session_state.period_from}** → **{st.session_state.period_to}**.")
     else:
         st.caption("Showing all dates.")
+    closed = st.session_state.get("closed_df")
+    if closed is not None and not getattr(closed, "empty", True):
+        shown = apply_period_filter(closed)
+        st.caption(f"Tickets in this period: **{0 if shown is None else len(shown)}** of {len(closed)}.")
 
 
 def render_isp_multiselect(location="main", key="isp_multi_main"):

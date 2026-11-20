@@ -64,7 +64,7 @@ open_df = st.session_state.get('open_df')
 closed_df = apply_isp_filter(closed_df)
 open_df = apply_isp_filter(open_df)
 
-period = st.selectbox("Analysis Period (Closed)", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "All Time"], index=0)
+period = st.selectbox("Analysis Period (Closed)", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "All Time"], index=0, key="dash_period")
 period_map = {"Last 1 Month": "1M", "Last 3 Months": "3M", "Last 6 Months": "6M", "All Time": "ALL"}
 
 if closed_df is not None and not closed_df.empty:

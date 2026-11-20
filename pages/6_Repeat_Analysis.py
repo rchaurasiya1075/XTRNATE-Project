@@ -33,7 +33,8 @@ st.markdown(f"**Active ISP:** `{isp}` | Closed Records: **{len(closed_df)}** | O
 period = st.radio(
     "Select Period (for Closed / Repeat analysis)",
     ["Last 1 Month", "Last 2 Months", "Last 3 Months", "Last 6 Months", "Overall"],
-    horizontal=True
+    horizontal=True,
+    key="repeat_period",
 )
 period_map = {
     "Last 1 Month": "1M",

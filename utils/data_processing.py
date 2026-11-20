@@ -420,14 +420,29 @@ def merge_with_site_master(tickets_df, site_df):
         return tickets_df
 
 def filter_by_period(df, period='1M'):
-    if df is None or df.empty or 'submitted_time' not in df.columns:
+    """Page-level Last N months. Skipped when the top Month/date picker is already on."""
+    if df is None or getattr(df, "empty", True):
         return df if df is not None else pd.DataFrame()
     try:
+        import streamlit as st
+        if (st.session_state.get("period_mode") or "All time") != "All time":
+            return df.copy()
+    except Exception:
+        pass
+    if 'submitted_time' not in df.columns:
+        return df
+    try:
         now = datetime.now()
-        days = {'1M': 30, '2M': 60, '3M': 90, '6M': 180}.get(period)
+        days = {'1M': 30, '2M': 60, '3M': 90, '4M': 120, '5M': 150, '6M': 180, '7M': 210}.get(period)
         if not days:
             return df
-        return df[df['submitted_time'] >= now - timedelta(days=days)].copy()
+        ts = pd.to_datetime(df['submitted_time'], errors='coerce')
+        try:
+            if getattr(ts.dt, 'tz', None) is not None:
+                ts = ts.dt.tz_convert('Asia/Kolkata').dt.tz_localize(None)
+        except Exception:
+            pass
+        return df.loc[ts.notna() & (ts >= now - timedelta(days=days))].copy()
     except Exception:
         return df
 

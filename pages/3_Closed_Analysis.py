@@ -28,7 +28,7 @@ closed_df = apply_isp_filter(closed_df)
 
 st.markdown(f"**ISP:** `{isp}` | **Total Closed Records:** {len(closed_df)}")
 
-period = st.radio("Select Period", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "All Time"], horizontal=True)
+period = st.radio("Select Period", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "All Time"], horizontal=True, key="closed_period")
 period_map = {"Last 1 Month": "1M", "Last 3 Months": "3M", "Last 6 Months": "6M", "All Time": "ALL"}
 
 df = filter_by_period(closed_df, period_map[period]) if period_map[period] != "ALL" else closed_df.copy()

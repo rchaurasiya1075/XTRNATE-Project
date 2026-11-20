@@ -366,14 +366,20 @@ with f1:
     st.markdown(f"**ISP:** {partner}")
     st.caption("Select multiple ISPs at the top / sidebar")
 with f2:
-    date_mode = st.radio("Date", ["Last N months", "From – To"], horizontal=True)
+    date_mode = st.radio(
+        "Date",
+        ["Selected period", "Last N months", "From – To"],
+        horizontal=True,
+        key="partner_date_mode",
+    )
 with f3:
     months_n = st.selectbox(
         "Period Filter",
         ["Last 1 Month", "Last 2 Months", "Last 3 Months", "Last 4 Months",
          "Last 5 Months", "Last 6 Months", "Last 7 Months", "Overall"],
         index=2,
-        disabled=(date_mode == "From – To"),
+        key="partner_months_n",
+        disabled=(date_mode != "Last N months"),
     )
 
 max_dt = work["resolved_time"].max()
@@ -382,12 +388,16 @@ if pd.isna(max_dt):
     st.info("No resolved tickets for this selection.")
     st.stop()
 
-if date_mode == "From – To":
+if date_mode == "Selected period":
+    selected = work.copy()
+    period_label = "selected period"
+elif date_mode == "From – To":
     rng = st.date_input(
         "Report From → To (resolved date)",
         value=(min_dt.date(), max_dt.date()),
         min_value=min_dt.date(),
         max_value=max_dt.date(),
+        key="partner_resolved_rng",
     )
     if isinstance(rng, (list, tuple)) and len(rng) == 2:
         d0, d1 = rng[0], rng[1]

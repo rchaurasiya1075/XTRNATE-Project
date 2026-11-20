@@ -65,7 +65,7 @@ if closed_df is None or closed_df.empty:
     st.warning("Closed data not found. Check sheet sharing.")
     st.stop()
 
-period = st.radio("Period", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "Overall"], horizontal=True)
+period = st.radio("Period", ["Last 1 Month", "Last 3 Months", "Last 6 Months", "Overall"], horizontal=True, key="penalty_period")
 period_map = {"Last 1 Month": "1M", "Last 3 Months": "3M", "Last 6 Months": "6M", "Overall": "ALL"}
 df_all = filter_by_period(closed_df, period_map[period]) if period_map[period] != "ALL" else closed_df.copy()
 df_all = apply_isp_filter(df_all)

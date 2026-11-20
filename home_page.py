@@ -145,6 +145,7 @@ PAGE_CATS = [
         ("pages/8_ISP_Comparison.py", "ISP Comparison", "⚖️"),
         ("pages/12_Partner_Report.py", "Partner Report", "📄"),
         ("pages/9_Vendor_Performance.py", "Vendor Performance", "📈"),
+        ("pages/28_Vendor_Report.py", "Vendor Report", "📑"),
         ("pages/20_Vendor_Change.py", "Vendor Change", "🔄"),
     ]),
     ("📅 SLA & Reports", [

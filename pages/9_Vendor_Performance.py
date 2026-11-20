@@ -31,7 +31,8 @@ open_df = apply_isp_filter(open_df)
 period = st.radio(
     "Period",
     ["Last 1 Month", "Last 3 Months", "Last 6 Months", "Overall"],
-    horizontal=True
+    horizontal=True,
+    key="vendor_perf_period",
 )
 period_map = {"Last 1 Month": "1M", "Last 3 Months": "3M", "Last 6 Months": "6M", "Overall": "ALL"}
 df = filter_by_period(closed_df, period_map[period]) if period_map[period] != "ALL" else closed_df.copy()
